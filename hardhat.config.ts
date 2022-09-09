@@ -4,7 +4,7 @@ import "@openzeppelin/hardhat-upgrades";
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.15",
+    version: "0.8.16",
     settings: {
       optimizer: {
         enabled: true,
@@ -31,6 +31,9 @@ const config: HardhatUserConfig = {
       },
       gas: "auto"
     },
+  },
+  mocha: {
+    timeout: 120000
   },
 };
 
