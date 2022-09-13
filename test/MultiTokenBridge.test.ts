@@ -110,33 +110,34 @@ function getAmountByTokenAndAddresses(
 }
 
 describe("Contract 'MultiTokenBridge'", async () => {
-  // Revert messages
   const REVERT_MESSAGE_IF_CONTRACT_IS_ALREADY_INITIALIZED = "Initializable: contract is already initialized";
   const REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED = "Pausable: paused";
   const REVERT_MESSAGE_IF_TOKEN_TRANSFER_AMOUNT_EXCEEDS_BALANCE = "ERC20: transfer amount exceeds balance";
 
-  const REVERT_ERROR_IF_TOKEN_DOES_NOT_SUPPORT_BRIDGE_OPERATIONS = "NonBridgeableToken";
-  const REVERT_ERROR_IF_RELOCATION_TOKEN_ADDRESS_IS_ZERO = "ZeroRelocationTokenAddress";
-  const REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedRelocationMode";
-  const REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedAccommodationMode";
+  const REVERT_ERROR_IF_RELOCATION_TOKEN_ADDRESS_IS_ZERO = "ZeroRelocationToken";
   const REVERT_ERROR_IF_RELOCATION_AMOUNT_IS_ZERO = "ZeroRelocationAmount";
-  const REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED = "UnsupportedRelocation";
-  const REVERT_ERROR_IF_UNSUPPORTING_TOKEN = "UnsupportingToken";
-  const REVERT_ERROR_IF_TRANSACTION_SENDER_IS_UNAUTHORIZED = "UnauthorizedTransactionSender";
-  const REVERT_ERROR_IF_RELOCATION_ARRAY_OF_NONCES_IS_EMPTY = "EmptyNonceArray";
-  const REVERT_ERROR_IF_RELOCATION_IS_ALREADY_PROCESSED = "AlreadyProcessedRelocation";
-  const REVERT_ERROR_IF_RELOCATION_DOES_NOT_EXIST = "NotExistentRelocation";
-  const REVERT_ERROR_IF_RELOCATION_IS_ALREADY_CANCELED = "AlreadyCanceledRelocation";
   const REVERT_ERROR_IF_RELOCATION_COUNT_IS_ZERO = "ZeroRelocationCount";
-  const REVERT_ERROR_IF_THERE_IS_LACK_PENDING_RELOCATIONS = "LackOfPendingRelocations";
-  const REVERT_ERROR_IF_BURNING_OF_TOKENS_FAILED = "TokenBurningFailure";
-  const REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED = "UnsupportedAccommodation";
-  const REVERT_ERROR_IF_ACCOMMODATION_FIRST_NONCE_IS_ZERO = "ZeroAccommodationNonce";
+  const REVERT_ERROR_IF_LACK_OF_PENDING_RELOCATIONS = "LackOfPendingRelocations";
+  const REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED = "UnsupportedRelocation";
+  const REVERT_ERROR_IF_RELOCATION_IS_NOT_EXISTENT = "NotExistentRelocation";
+  const REVERT_ERROR_IF_RELOCATION_IS_ALREADY_PROCESSED = "AlreadyProcessedRelocation";
+  const REVERT_ERROR_IF_RELOCATION_IS_ALREADY_CANCELED = "AlreadyCanceledRelocation";
+  const REVERT_ERROR_IF_CANCELLATION_ARRAY_OF_NONCES_IS_EMPTY = "EmptyCancellationNoncesArray";
+  const REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION = "UnauthorizedCancellation";
+
+  const REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO = "ZeroAccommodationNonce";
   const REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH = "AccommodationNonceMismatch";
-  const REVERT_ERROR_IF_INPUT_ARRAY_OF_RELOCATIONS_IS_EMPTY = "EmptyRelocationArray";
+  const REVERT_ERROR_IF_ACCOMMODATION_ARRAY_OF_RELOCATIONS_IS_EMPTY = "EmptyAccommodationRelocationsArray";
+  const REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED = "UnsupportedAccommodation";
   const REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS = "ZeroAccommodationAccount";
   const REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO = "ZeroAccommodationAmount";
+
   const REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED = "TokenMintingFailure";
+  const REVERT_ERROR_IF_BURNING_OF_TOKENS_FAILED = "TokenBurningFailure";
+
+  const REVERT_ERROR_IF_TOKEN_IS_NOT_BRIDGEABLE = "NonBridgeableToken";
+  const REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedRelocationMode";
+  const REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedAccommodationMode";
 
   let multiTokenBridge: Contract;
   let fakeTokenAddress: string;
@@ -462,7 +463,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             fakeTokenAddress,
             OperationMode.BurnOrMint
           )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TOKEN_DOES_NOT_SUPPORT_BRIDGE_OPERATIONS);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TOKEN_IS_NOT_BRIDGEABLE);
       });
 
       it("Emits the correct events and updates the configuration correctly", async () => {
@@ -574,7 +575,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             fakeTokenAddress,
             OperationMode.BurnOrMint
           )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TOKEN_DOES_NOT_SUPPORT_BRIDGE_OPERATIONS);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TOKEN_IS_NOT_BRIDGEABLE);
       });
 
       it("Emits the correct events and updates the configuration correctly", async () => {
@@ -744,17 +745,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED);
       });
 
-      it("Is reverted if the token does not support the bridge", async () => {
-        await proveTx(tokenMock1.setBridge(deployer.address));
-        await expect(
-          multiTokenBridge.connect(relocation.account).requestRelocation(
-            relocation.chainId,
-            relocation.token.address,
-            relocation.amount
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_UNSUPPORTING_TOKEN);
-      });
-
       it("Is reverted if the user has not enough token balance", async () => {
         const excessTokenAmount: number = relocation.amount + 1;
         await expect(
@@ -818,19 +808,19 @@ describe("Contract 'MultiTokenBridge'", async () => {
       it("Is reverted if the caller did not request the relocation", async () => {
         await expect(
           multiTokenBridge.connect(user2).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TRANSACTION_SENDER_IS_UNAUTHORIZED);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
       });
 
       it("Is reverted if a relocation with the nonce has already processed", async () => {
         await expect(
           multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce - 1)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TRANSACTION_SENDER_IS_UNAUTHORIZED);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
       });
 
       it("Is reverted if a relocation with the nonce does not exists", async () => {
         await expect(
           multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce + 1)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TRANSACTION_SENDER_IS_UNAUTHORIZED);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
       });
 
       it("Transfers the tokens as expected, emits the correct event, changes the state properly", async () => {
@@ -906,7 +896,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       it("Is reverted if the input array of nonces is empty", async () => {
         await expect(
           multiTokenBridge.connect(relocator).cancelRelocations(chainId, [])
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_ARRAY_OF_NONCES_IS_EMPTY);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_CANCELLATION_ARRAY_OF_NONCES_IS_EMPTY);
       });
 
       it("Is reverted if some input nonce is less than the lowest nonce of pending relocations", async () => {
@@ -926,7 +916,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             Math.max(...relocationNonces),
             Math.max(...relocationNonces) + 1
           ]
-        )).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_DOES_NOT_EXIST);
+        )).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_IS_NOT_EXISTENT);
       });
 
       it("Is reverted if a relocation with some nonce was already canceled", async () => {
@@ -1032,14 +1022,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       it("Is reverted if the relocation count exceeds the number of pending relocations", async () => {
         await expect(
           multiTokenBridge.connect(relocator).relocate(relocation.chainId, relocationCount + 1)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_THERE_IS_LACK_PENDING_RELOCATIONS);
-      });
-
-      it("Is reverted if the token does not support the bridge", async () => {
-        await proveTx(tokenMock1.setBridge(deployer.address));
-        await expect(
-          multiTokenBridge.connect(relocator).relocate(relocation.chainId, relocationCount)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_UNSUPPORTING_TOKEN);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_LACK_OF_PENDING_RELOCATIONS);
       });
 
       it("Is reverted if burning of tokens had failed", async () => {
@@ -1151,7 +1134,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         // Try to cancel a relocation of another user
         await expect(
           multiTokenBridge.connect(relocations[1].account).cancelRelocation(chainId, relocations[2].nonce)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TRANSACTION_SENDER_IS_UNAUTHORIZED);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
 
         // Try to cancel several relocations including the processed one
         await expect(
@@ -1169,7 +1152,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             relocations[2].nonce,
             relocations[1].nonce,
           ])
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_DOES_NOT_EXIST);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_IS_NOT_EXISTENT);
 
         // Check that state of the bridge has not changed
         await checkBridgeState(relocations);
@@ -1467,7 +1450,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             0,
             onChainRelocations
           )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_FIRST_NONCE_IS_ZERO);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO);
       });
 
       it("Is reverted if the first relocation nonce does not equal the last accommodation nonce +1", async () => {
@@ -1487,18 +1470,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
             firstRelocationNonce,
             []
           )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_INPUT_ARRAY_OF_RELOCATIONS_IS_EMPTY);
-      });
-
-      it("Is reverted if one of the tokens does not support the bridge", async () => {
-        await proveTx(tokenMock1.setBridge(deployer.address));
-        await expect(
-          multiTokenBridge.connect(accommodator).accommodate(
-            chainId,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_UNSUPPORTING_TOKEN);
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ARRAY_OF_RELOCATIONS_IS_EMPTY);
       });
 
       it("Is reverted if one of the input accounts has zero address", async () => {
