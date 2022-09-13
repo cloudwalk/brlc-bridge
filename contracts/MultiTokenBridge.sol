@@ -15,7 +15,7 @@ import { StoragePlaceholder200 } from "./base/StoragePlaceholder.sol";
 
 /**
  * @title MultiTokenBridgeUpgradeable contract
- * @dev Allows to bridge coins of multiple token contracts between blockchains.
+ * @dev The bridge contract that supports bridging of multiple tokens.
  * See terms in the comments of the {IMultiTokenBridge} interface.
  */
 contract MultiTokenBridge is
@@ -26,89 +26,89 @@ contract MultiTokenBridge is
     MultiTokenBridgeStorage,
     IMultiTokenBridge
 {
-    /// @dev The contract owner role.
+    /// @dev The role of this contract owner.
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
-    /// @dev The role who is allowed to execute bridge operations.
+    /// @dev The role of bridger that is allowed to execute bridging operations.
     bytes32 public constant BRIDGER_ROLE = keccak256("BRIDGER_ROLE");
 
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // -------------------- Events -----------------------------------
 
-    /// @dev Emitted when the mode of relocation with specified parameters is changed.
+    /// @dev Emitted when the mode of relocation is changed.
     event SetRelocationMode(
         uint256 indexed chainId, // The destination chain ID of the relocation.
-        address indexed token,   // The address of the token contract whose coins are being relocated.
-        OperationMode oldMode,   // The old mode of the relocation.
-        OperationMode newMode    // The new mode of the relocation.
+        address indexed token,   // The address of the token used for relocation.
+        OperationMode oldMode,   // The old mode of relocation.
+        OperationMode newMode    // The new mode of relocation.
     );
 
-    /// @dev Emitted when mode of accommodation with specified parameters is changed.
+    /// @dev Emitted when the mode of accommodation is changed.
     event SetAccommodationMode(
         uint256 indexed chainId, // The source chain ID of the accommodation.
-        address indexed token,   // The address of the token contract whose coins are being accommodated.
-        OperationMode oldMode,   // The old mode of the accommodation.
-        OperationMode newMode    // The new mode of the accommodation.
+        address indexed token,   // The address of the token used for accommodation.
+        OperationMode oldMode,   // The old mode of accommodation.
+        OperationMode newMode    // The new mode of accommodation.
     );
 
     // -------------------- Errors -----------------------------------
 
-    /// @dev The zero address of a token contract has been passed when request a relocation.
+    /// @dev The zero token address has been passed when requesting a relocation.
     error ZeroRelocationTokenAddress();
 
-    /// @dev The zero amount of tokens has been passed when request a relocation.
+    /// @dev The zero amount of tokens has been passed when requesting a relocation.
     error ZeroRelocationAmount();
 
-    /// @dev Relocation to the provided chain for the provided token is not supported by this bridge.
+    /// @dev The relocation to the destination chain for the provided token is not supported.
     error UnsupportedRelocation();
 
     /// @dev The underlying token contract does not support this bridge to execute needed operations.
     error UnsupportingToken();
 
-    /// @dev The transaction sender is not authorized to execute the requested function with provided arguments.
+    /// @dev The transaction sender is not authorized to cancel the relocation request.
     error UnauthorizedTransactionSender();
 
-    /// @dev The provided array of relocation nonces as a function argument is empty.
+    /// @dev An empty array of nonces has been passed when cancelling relocations.
     error EmptyNonceArray();
 
-    /// @dev The zero relocation count has been passed as a function argument.
+    /// @dev The zero count of relocations has been passed when processing pending relocations.
     error ZeroRelocationCount();
 
-    /// @dev The requested count of relocations to process is greater than the current number of pending relocations.
+    /// @dev The count of relocations to process is greater than the number of pending relocations.
     error LackOfPendingRelocations();
 
-    /// @dev A token burning failure happened during a bridge operation.
+    /// @dev The burning of tokens failed when processing a relocation operation.
     error TokenBurningFailure();
 
-    /// @dev The zero nonce has been passed to accommodate tokens.
+    /// @dev The zero nonce has been passed when processing accommodation operations.
     error ZeroAccommodationNonce();
 
-    /// @dev A nonce mismatch has been found during token accommodation.
+    /// @dev A nonce mismatch has been found when processing accommodation operations.
     error AccommodationNonceMismatch();
 
-    /// @dev The provided array of relocations as a function argument is empty.
+    /// @dev An empty array of relocations has been passed when processing accommodation operations.
     error EmptyRelocationArray();
 
-    /// @dev Accommodation from the provided chain for the provided token contract is not supported by this bridge.
+    /// @dev An accommodation from the source chain for the provided token contract is not supported.
     error UnsupportedAccommodation();
 
-    /// @dev The zero account address has been passed to accommodate tokens.
+    /// @dev The zero account has been found when processing an accommodation operations.
     error ZeroAccommodationAccount();
 
-    /// @dev The zero amount of tokens has been passed to accommodate tokens.
+    /// @dev The zero amount has been found when processing an accommodation operations.
     error ZeroAccommodationAmount();
 
-    /// @dev A token minting failure happened during a bridge operation.
+    /// @dev The minting of tokens failed when processing an accommodation operation.
     error TokenMintingFailure();
 
-    /// @dev The provided token contract does not support the bridge operations.
+    /// @dev The token contract does not support {IERC20Bridgeable} interface.
     error NonBridgeableToken();
 
-    /// @dev The relocation with the provided nonce is already processed so it cannot be canceled.
+    /// @dev The relocation with the provided nonce is already processed.
     error AlreadyProcessedRelocation();
 
-    /// @dev The relocation with the provided nonce does not exist so it cannot be canceled.
+    /// @dev The relocation with the provided nonce does not exist.
     error NotExistentRelocation();
 
     /// @dev The relocation with the provided nonce is already canceled.
@@ -122,6 +122,10 @@ contract MultiTokenBridge is
 
     // -------------------- Functions -----------------------------------
 
+    /**
+     * @dev The initialize function of the upgradable contract.
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable
+     */
     function initialize() public initializer {
         __MultiTokenBridge_init();
     }
@@ -193,12 +197,9 @@ contract MultiTokenBridge is
      * Requirements:
      *
      * - The contract must not be paused.
-     * - The provided address of the token contract whose coins are being relocated must not be zero.
-     * - The provided amount of tokens to relocate must not be zero.
-     * - The relocation to the destination chain for the provided token contract must be supported.
-     * - If the mode of the relocation is BurnOrMint
-     *   the provided token contract must support this bridge to execute needed operation.
-     * - The caller must have the provided amount of tokens.
+     * - The token address used for relocation must not be zero.
+     * - The amount of tokens to relocate must be greater than zero.
+     * - The relocation to the destination chain for the provided token must be supported.
      */
     function requestRelocation(
         uint256 chainId,
@@ -251,9 +252,8 @@ contract MultiTokenBridge is
      *
      * - The contract must not be paused.
      * - The caller must be the initiator of the relocation that is being canceled.
-     * - The relocation for the provided chain ID and nonce must not be already processed.
-     * - The relocation for the provided chain ID and nonce must exist.
-     * - The relocation for the provided chain ID and nonce must not be already canceled.
+     * - The relocation for the provided chain ID and nonce must not be processed.
+     * - The relocation for the provided chain ID and nonce must not be canceled.
      */
     function cancelRelocation(uint256 chainId, uint256 nonce) external whenNotPaused {
         if (_relocations[chainId][nonce].account != _msgSender()) {
@@ -271,9 +271,8 @@ contract MultiTokenBridge is
      * - The contract must not be paused.
      * - The caller must have the {BRIDGER_ROLE} role.
      * - The provided array of relocation nonces must not be empty.
-     * - All the relocation for the provided chain ID and nonces must not be already processed.
-     * - All the relocation for the provided chain ID and nonces must exist.
-     * - All the relocation for the provided chain ID and nonces must not be already canceled.
+     * - All the relocations for the provided chain ID and nonces must not be processed.
+     * - All the relocations for the provided chain ID and nonces must not be canceled.
      */
     function cancelRelocations(uint256 chainId, uint256[] memory nonces) external whenNotPaused onlyRole(BRIDGER_ROLE) {
         if (nonces.length == 0) {
@@ -292,11 +291,8 @@ contract MultiTokenBridge is
      *
      * - The contract must not be paused.
      * - The caller must have the {BRIDGER_ROLE} role.
-     * - The provided count of relocations to process must not be zero.
-     * - The provided count of relocations to process must not be greater than the number of pending relocations.
-     * - For all the relocations that are executed is BurnOrMint operation mode
-     *   the related token contracts whose coins are being relocated must support this bridge
-     *   and must execute burning operations successfully.
+     * - The provided count of relocations to process must not be zero
+     *   and must be less or equal to the number of pending relocations.
      */
     function relocate(uint256 chainId, uint256 count) external whenNotPaused onlyRole(BRIDGER_ROLE) {
         if (count == 0) {
@@ -337,16 +333,12 @@ contract MultiTokenBridge is
      *
      * - The contract must not be paused.
      * - The caller must have the {BRIDGER_ROLE} role.
-     * - The provided nonce of the first relocation must not be zero.
-     * - The provided nonce of the first relocation must be one more than the nonce of the last accommodation.
-     * - The provided array of relocations must not be empty.
-     * - This bridge must support accommodations from the chain with the provided ID and
-     *   for all token contracts of the provided array of relocations.
+     * - The nonce of the first relocation must not be zero
+     *   and must be greater than the nonce of the last accommodation.
+     * - The array of relocations must not be empty and accommodation for
+     *   each relocation in the array must be supported.
      * - All the provided relocations must have non-zero account address.
      * - All the provided relocations must have non-zero token amount.
-     * - For all the accommodations whose mode is BurnAndMint
-     *   the related token contracts whose coins are being accommodated must support this bridge
-     *   and must execute minting operations successfully.
      */
     function accommodate(
         uint256 chainId,
@@ -393,19 +385,20 @@ contract MultiTokenBridge is
     }
 
     /**
-     * @dev Sets the mode of relocation to a destination chain for a local token contract.
+     * @dev Sets the mode of relocation for a given destination chain and provided token.
      *
      * Requirements:
      *
      * - The caller must have the {OWNER_ROLE} role.
-     * - The new relocation mode must defer from the current one.
-     * - If the new relocation mode is BurnOrMint the underlying token contract must support the bridge operations.
+     * - The new mode of relocation must be different from the current one.
+     * - In the case of `BurnOrMint` relocation mode the token contract must
+     *   support {IERC20Bridgeable} interface.
      *
      * Emits a {SetRelocationMode} event.
      *
-     * @param chainId The ID of the destination chain to relocate to.
-     * @param token The address of the local token contract whose coins are being relocated.
-     * @param newMode The new relocation mode.
+     * @param chainId The ID of the destination chain to relocate tokens to.
+     * @param token The address of the token used for relocation.
+     * @param newMode The new mode of relocation.
      */
     function setRelocationMode(
         uint256 chainId,
@@ -426,19 +419,20 @@ contract MultiTokenBridge is
     }
 
     /**
-     * @dev Sets the mode of accommodation from a source chain for a local token contract.
+     * @dev Sets the mode of accommodation for a given source chain and provided token.
      *
      * Requirements:
      *
      * - The caller must have the {OWNER_ROLE} role.
-     * - The new accommodation mode must defer from the current one.
-     * - If the new accommodation mode is BurnOrMint the underlying token contract must support the bridge operations.
+     * - The new mode of accommodation must be different from the current one.
+     * - In the case of `BurnOrMint` accommodation mode the token contract must
+     *   support {IERC20Bridgeable} interface.
      *
      * Emits a {SetAccommodationMode} event.
      *
-     * @param chainId The ID of the source chain to accommodate from.
-     * @param token The address of the local token contract whose coins are being accommodated.
-     * @param newMode The new accommodation mode.
+     * @param chainId The ID of the source chain to accommodate tokens from.
+     * @param token The address of the token used for accommodation.
+     * @param newMode The new mode of accommodation.
      */
     function setAccommodationMode(
         uint256 chainId,
