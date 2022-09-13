@@ -117,6 +117,8 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
   const REVERT_ERROR_IF_TOKEN_DOES_NOT_SUPPORT_BRIDGE_OPERATIONS = "NonBridgeableToken";
   const REVERT_ERROR_IF_RELOCATION_TOKEN_ADDRESS_IS_ZERO = "ZeroRelocationTokenAddress";
+  const REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedRelocationMode";
+  const REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedAccommodationMode";
   const REVERT_ERROR_IF_RELOCATION_AMOUNT_IS_ZERO = "ZeroRelocationAmount";
   const REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED = "UnsupportedRelocation";
   const REVERT_ERROR_IF_UNSUPPORTING_TOKEN = "UnsupportingToken";
@@ -484,15 +486,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
         const relocationModeNew: OperationMode = await multiTokenBridge.getRelocationMode(chainId, tokenMock.address);
         expect(relocationModeNew).to.equal(OperationMode.BurnOrMint);
 
-        // Second call with the same argument should not emit an event
-        await expect(
-          multiTokenBridge.setRelocationMode(
-            chainId,
-            tokenMock.address,
-            OperationMode.BurnOrMint
-          )
-        ).not.to.emit(multiTokenBridge, "SetRelocationMode");
-
         await expect(
           multiTokenBridge.setRelocationMode(
             chainId,
@@ -528,6 +521,36 @@ describe("Contract 'MultiTokenBridge'", async () => {
         );
         const relocationModeNew3: OperationMode = await multiTokenBridge.getRelocationMode(chainId, tokenMock.address);
         expect(relocationModeNew3).to.equal(OperationMode.Unsupported);
+      });
+
+      it("Is reverted if the call does not changed the relocation supporting state", async () => {
+        await expect(
+          multiTokenBridge.setRelocationMode(
+            chainId,
+            tokenMock.address,
+            OperationMode.Unsupported
+          )
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED
+        );
+
+        await proveTx(multiTokenBridge.setRelocationMode(
+          chainId,
+          tokenMock.address,
+          OperationMode.BurnOrMint
+        ));
+
+        await expect(
+          multiTokenBridge.setRelocationMode(
+            chainId,
+            tokenMock.address,
+            OperationMode.BurnOrMint
+          )
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED
+        );
       });
     });
 
@@ -577,15 +600,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
           await multiTokenBridge.getAccommodationMode(chainId, tokenMock.address);
         expect(accommodationModeNew).to.equal(OperationMode.BurnOrMint);
 
-        // Second call with the same argument should not emit an event
-        await expect(
-          multiTokenBridge.setAccommodationMode(
-            chainId,
-            tokenMock.address,
-            OperationMode.BurnOrMint
-          )
-        ).not.to.emit(multiTokenBridge, "SetAccommodationMode");
-
         await expect(
           multiTokenBridge.setAccommodationMode(
             chainId,
@@ -623,6 +637,36 @@ describe("Contract 'MultiTokenBridge'", async () => {
         const accommodationModeNew3: OperationMode =
           await multiTokenBridge.getAccommodationMode(chainId, tokenMock.address);
         expect(accommodationModeNew3).to.equal(OperationMode.Unsupported);
+      });
+
+      it("Is reverted if the call does not changed the accommodation supporting state", async () => {
+        await expect(
+          multiTokenBridge.setAccommodationMode(
+            chainId,
+            tokenMock.address,
+            OperationMode.Unsupported
+          )
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED
+        );
+
+        await proveTx(multiTokenBridge.setAccommodationMode(
+          chainId,
+          tokenMock.address,
+          OperationMode.BurnOrMint
+        ));
+
+        await expect(
+          multiTokenBridge.setAccommodationMode(
+            chainId,
+            tokenMock.address,
+            OperationMode.BurnOrMint
+          )
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED
+        );
       });
     });
   });

@@ -114,6 +114,12 @@ contract MultiTokenBridge is
     /// @dev The relocation with the provided nonce is already canceled.
     error AlreadyCanceledRelocation();
 
+    /// @dev The mode of relocation has not been changed.
+    error UnchangedRelocationMode();
+
+    /// @dev The mode of accommodation has not been changed.
+    error UnchangedAccommodationMode();
+
     // -------------------- Functions -----------------------------------
 
     function initialize() public initializer {
@@ -408,7 +414,7 @@ contract MultiTokenBridge is
     ) external onlyRole(OWNER_ROLE) {
         OperationMode oldMode = _relocationModes[chainId][token];
         if (oldMode == newMode) {
-            return;
+            revert UnchangedRelocationMode();
         }
         if (newMode == OperationMode.BurnOrMint) {
             if (!isTokenIERC20BridgeableInternal(token)) {
@@ -441,7 +447,7 @@ contract MultiTokenBridge is
     ) external onlyRole(OWNER_ROLE) {
         OperationMode oldMode = _accommodationModes[chainId][token];
         if (oldMode == newMode) {
-            return;
+            revert UnchangedAccommodationMode();
         }
         if (newMode == OperationMode.BurnOrMint) {
             if (!isTokenIERC20BridgeableInternal(token)) {
