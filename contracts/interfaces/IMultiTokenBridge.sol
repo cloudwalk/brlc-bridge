@@ -7,18 +7,14 @@ pragma solidity ^0.8.8;
  * @dev See terms in the comments of the {IMultiTokenBridge} interface.
  */
 interface IMultiTokenBridgeTypes {
-    /**
-     * @dev Enumeration of bridge operation modes.
-     */
+    /// @dev Enumeration of bridge operation modes.
     enum OperationMode {
         Unsupported,   // 0 Relocation/accommodation is unsupported (the default value).
         BurnOrMint,    // 1 Relocation/accommodation is supported by burning/minting tokens.
         LockOrTransfer // 2 Relocation/accommodation is supported by locking/transferring tokens.
     }
 
-    /**
-     * @dev Structure with data of a single relocation operation.
-     */
+    /// @dev Structure with data of a single relocation operation.
     struct Relocation {
         address token;   // The address of the token used for relocation.
         address account; // The account that requested the relocation.
@@ -171,6 +167,7 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
 
     /**
      * @dev Processes specified count of pending relocations.
+     *
      * If relocations are executed in `BurnOrMint` mode tokens will be burnt.
      * If relocations are executed in `LockOrTransfer` mode tokens will be locked on the bridge.
      * The canceled relocations are skipped during the processing.
@@ -185,6 +182,7 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
 
     /**
      * @dev Accommodates tokens from a source chain.
+     *
      * If accommodations are executed in `BurnOrMint` mode tokens will be minted.
      * If accommodations are executed in `LockOrTransfer` mode tokens will be transferred from the bridge account.
      * Tokens will be minted or transferred only for non-canceled relocations.

@@ -3,7 +3,6 @@
 pragma solidity ^0.8.8;
 
 import { ERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-
 import { IERC20Bridgeable } from "../../interfaces/IERC20Bridgeable.sol";
 
 /**
@@ -25,7 +24,7 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
     }
 
     /**
-     * @dev Cals the appropriate internal function to mint needed amount of tokens for an account.
+     * @dev Calls the appropriate internal function to mint needed amount of tokens for an account.
      * @param account The address of an account to mint for.
      * @param amount The amount of tokens to mint.
      */
@@ -34,7 +33,9 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
         return true;
     }
 
-    /// @dev See {IERC20Bridgeable-mintForBridging}.
+    /**
+     * @dev See {IERC20Bridgeable-mintForBridging}.
+     */
     function mintForBridging(address account, uint256 amount) external override returns (bool) {
         if (_isMintingForBridgingDisabled) {
             return false;
@@ -44,7 +45,9 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
         return true;
     }
 
-    /// @dev See {IERC20Bridgeable-burnForBridging}.
+    /**
+     * @dev See {IERC20Bridgeable-burnForBridging}.
+     */
     function burnForBridging(address account, uint256 amount) external override returns (bool) {
         if (_isBurningForBridgingDisabled) {
             return false;
@@ -54,12 +57,16 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
         return true;
     }
 
-    /// @dev See {IERC20Bridgeable-isBridgeSupported}.
+    /**
+     * @dev See {IERC20Bridgeable-isBridgeSupported}.
+     */
     function isBridgeSupported(address bridge) public view override returns (bool) {
         return (bridge != address(0)) && (_bridge == bridge);
     }
 
-    /// @dev See {IERC20Bridgeable-isIERC20Bridgeable}.
+    /**
+     * @dev See {IERC20Bridgeable-isIERC20Bridgeable}.
+     */
     function isIERC20Bridgeable() public pure override returns (bool) {
         return true;
     }
@@ -72,12 +79,16 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
         _bridge = newBridge;
     }
 
-    /// @dev Disables token minting for bridging operations.
+    /**
+     * @dev Disables token minting for bridging operations.
+     */
     function disableMintingForBridging() external {
         _isMintingForBridgingDisabled = true;
     }
 
-    /// @dev Disables token burning for bridging operations.
+    /**
+     * @dev Disables token burning for bridging operations.
+     */
     function disableBurningForBridging() external {
         _isBurningForBridgingDisabled = true;
     }

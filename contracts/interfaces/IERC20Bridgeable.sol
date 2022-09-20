@@ -7,13 +7,15 @@ pragma solidity ^0.8.8;
  * @dev The interface of a token that supports the bridge operations.
  */
 interface IERC20Bridgeable {
-    /// @dev Emitted when a minting operation is performed as part of a bridge operation.
+    /// @dev Emitted when a minting is performed as part of a bridge operation.
     event MintForBridging(address indexed account, uint256 amount);
-    /// @dev Emitted when a burning operation is performed as part of a bridge operation.
+
+    /// @dev Emitted when a burning is performed as part of a bridge operation.
     event BurnForBridging(address indexed account, uint256 amount);
 
     /**
      * @dev Mints tokens as part of a bridge operation.
+     *
      * It is expected that this function can be called only by a bridge contract.
      *
      * Emits a {MintForBridging} event.
@@ -26,6 +28,7 @@ interface IERC20Bridgeable {
 
     /**
      * @dev Burns tokens as part of a bridge operation.
+     *
      * It is expected that this function can be called only by a bridge contract.
      *
      * Emits a {BurnForBridging} event.

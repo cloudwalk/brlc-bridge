@@ -15,17 +15,13 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
     /// @dev The mapping: a destination chain ID => the nonce of the last processed relocation to that chain.
     mapping(uint256 => uint256) internal _lastProcessedRelocationNonces;
 
-    /**
-     * @dev The mapping: a destination chain ID, a token address => the mode of relocation to that chain for that token.
-     */
+    /// @dev The mapping: a destination chain ID, a token address => the mode of relocation to that chain for that token.
     mapping(uint256 => mapping(address => OperationMode)) internal _relocationModes;
 
     /// @dev The mapping: a destination chain ID, a nonce => the relocation structure matching to that chain and nonce.
     mapping(uint256 => mapping(uint256 => Relocation)) internal _relocations;
 
-    /**
-     * @dev The mapping: a source chain ID, a token address => the mode of accommodation from that chain for that token.
-     */
+    /// @dev The mapping: a source chain ID, a token address => the mode of accommodation from that chain for that token.
     mapping(uint256 => mapping(address => OperationMode)) internal _accommodationModes;
 
     /// @dev The mapping: a source chain ID => the nonce of the last accommodation from that chain.

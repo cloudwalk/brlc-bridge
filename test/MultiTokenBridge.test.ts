@@ -161,6 +161,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
     // Set the supported bridge of the token if it is needed
     if (operationMode == OperationMode.BurnOrMint) {
       await proveTx(tokenMock.setBridge(multiTokenBridge.address));
+      expect(await tokenMock.isBridgeSupported(multiTokenBridge.address)).to.equal(true);
     }
     return tokenMock;
   }
@@ -808,19 +809,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
       it("Is reverted if the caller did not request the relocation", async () => {
         await expect(
           multiTokenBridge.connect(user2).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
+        );
       });
 
       it("Is reverted if a relocation with the nonce has already processed", async () => {
         await expect(
           multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce - 1)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
+        );
       });
 
       it("Is reverted if a relocation with the nonce does not exists", async () => {
         await expect(
           multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce + 1)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
+        );
       });
 
       it("Transfers the tokens as expected, emits the correct event, changes the state properly", async () => {
@@ -1134,7 +1144,10 @@ describe("Contract 'MultiTokenBridge'", async () => {
         // Try to cancel a relocation of another user
         await expect(
           multiTokenBridge.connect(relocations[1].account).cancelRelocation(chainId, relocations[2].nonce)
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION);
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
+        );
 
         // Try to cancel several relocations including the processed one
         await expect(

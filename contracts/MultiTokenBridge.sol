@@ -108,7 +108,7 @@ contract MultiTokenBridge is
     /// @dev The burning of tokens failed when processing a relocation operation.
     error TokenBurningFailure();
 
-    /// @dev The token contract does not support {IERC20Bridgeable} interface.
+    /// @dev The token contract does not support the {IERC20Bridgeable} interface.
     error NonBridgeableToken();
 
     /// @dev The mode of relocation has not been changed.
@@ -145,49 +145,6 @@ contract MultiTokenBridge is
         _setupRole(OWNER_ROLE, _msgSender());
     }
 
-    /// @dev See {IMultiTokenBridge-getPendingRelocationCounter}.
-    function getPendingRelocationCounter(uint256 chainId) external view returns (uint256) {
-        return _pendingRelocationCounters[chainId];
-    }
-
-    /// @dev See {IMultiTokenBridge-getLastProcessedRelocationNonce}.
-    function getLastProcessedRelocationNonce(uint256 chainId) external view returns (uint256) {
-        return _lastProcessedRelocationNonces[chainId];
-    }
-
-    /// @dev See {IMultiTokenBridge-getRelocationMode}.
-    function getRelocationMode(uint256 chainId, address token) external view returns (OperationMode) {
-        return _relocationModes[chainId][token];
-    }
-
-    /// @dev See {IMultiTokenBridge-getRelocation}.
-    function getRelocation(uint256 chainId, uint256 nonce) external view returns (Relocation memory) {
-        return _relocations[chainId][nonce];
-    }
-
-    /// @dev See {IMultiTokenBridge-getAccommodationMode}.
-    function getAccommodationMode(uint256 chainId, address token) external view returns (OperationMode) {
-        return _accommodationModes[chainId][token];
-    }
-
-    /// @dev See {IMultiTokenBridge-getLastAccommodationNonce}.
-    function getLastAccommodationNonce(uint256 chainId) external view returns (uint256) {
-        return _lastAccommodationNonces[chainId];
-    }
-
-    /// @dev See {IMultiTokenBridge-getRelocations}.
-    function getRelocations(
-        uint256 chainId,
-        uint256 nonce,
-        uint256 count
-    ) external view returns (Relocation[] memory relocations) {
-        relocations = new Relocation[](count);
-        for (uint256 i = 0; i < count; i++) {
-            relocations[i] = _relocations[chainId][nonce];
-            nonce += 1;
-        }
-    }
-
     /**
      * @dev See {IMultiTokenBridge-requestRelocation}.
      *
@@ -217,6 +174,7 @@ contract MultiTokenBridge is
         }
 
         address sender =  _msgSender();
+
         uint256 newPendingRelocationCount = _pendingRelocationCounters[chainId] + 1;
         nonce = _lastProcessedRelocationNonces[chainId] + newPendingRelocationCount;
         _pendingRelocationCounters[chainId] = newPendingRelocationCount;
@@ -225,18 +183,19 @@ contract MultiTokenBridge is
         relocation.token = token;
         relocation.amount = amount;
 
-        IERC20Upgradeable(token).safeTransferFrom(
-            sender,
-            address(this),
-            amount
-        );
-
         emit RequestRelocation(
             chainId,
             token,
             sender,
             amount,
-            nonce);
+            nonce
+        );
+
+        IERC20Upgradeable(token).safeTransferFrom(
+            sender,
+            address(this),
+            amount
+        );
     }
 
     /**
@@ -273,7 +232,8 @@ contract MultiTokenBridge is
             revert EmptyCancellationNoncesArray();
         }
 
-        for (uint256 i = 0; i < nonces.length; i++) {
+        uint len = nonces.length;
+        for (uint256 i = 0; i < len; i++) {
             cancelRelocationInternal(chainId, nonces[i]);
         }
     }
@@ -286,7 +246,7 @@ contract MultiTokenBridge is
      * - The contract must not be paused.
      * - The caller must have the {BRIDGER_ROLE} role.
      * - The provided count of relocations to process must not be zero
-     *   and must be less or equal to the number of pending relocations.
+     *   and must be less than or equal to the number of pending relocations.
      */
     function relocate(uint256 chainId, uint256 count) external whenNotPaused onlyRole(BRIDGER_ROLE) {
         if (count == 0) {
@@ -350,7 +310,8 @@ contract MultiTokenBridge is
             revert EmptyAccommodationRelocationsArray();
         }
 
-        for (uint256 i = 0; i < relocations.length; i++) {
+        uint len = relocations.length;
+        for (uint256 i = 0; i < len; i++) {
             Relocation memory relocation = relocations[i];
             if (_accommodationModes[chainId][relocation.token] == OperationMode.Unsupported) {
                 revert UnsupportedAccommodation();
@@ -453,6 +414,63 @@ contract MultiTokenBridge is
         emit SetAccommodationMode(chainId, token, oldMode, newMode);
     }
 
+    /**
+     * @dev See {IMultiTokenBridge-getPendingRelocationCounter}.
+     */
+    function getPendingRelocationCounter(uint256 chainId) external view returns (uint256) {
+        return _pendingRelocationCounters[chainId];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getLastProcessedRelocationNonce}.
+     */
+    function getLastProcessedRelocationNonce(uint256 chainId) external view returns (uint256) {
+        return _lastProcessedRelocationNonces[chainId];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getRelocationMode}.
+     */
+    function getRelocationMode(uint256 chainId, address token) external view returns (OperationMode) {
+        return _relocationModes[chainId][token];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getRelocation}.
+     */
+    function getRelocation(uint256 chainId, uint256 nonce) external view returns (Relocation memory) {
+        return _relocations[chainId][nonce];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getAccommodationMode}.
+     */
+    function getAccommodationMode(uint256 chainId, address token) external view returns (OperationMode) {
+        return _accommodationModes[chainId][token];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getLastAccommodationNonce}.
+     */
+    function getLastAccommodationNonce(uint256 chainId) external view returns (uint256) {
+        return _lastAccommodationNonces[chainId];
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-getRelocations}.
+     */
+    function getRelocations(
+        uint256 chainId,
+        uint256 nonce,
+        uint256 count
+    ) external view returns (Relocation[] memory relocations) {
+        relocations = new Relocation[](count);
+        for (uint256 i = 0; i < count; i++) {
+            relocations[i] = _relocations[chainId][nonce];
+            nonce += 1;
+        }
+    }
+
     function cancelRelocationInternal(uint256 chainId, uint256 nonce) internal {
         uint256 lastProcessedRelocationNonce = _lastProcessedRelocationNonces[chainId];
         if (nonce <= lastProcessedRelocationNonce) {
@@ -469,7 +487,6 @@ contract MultiTokenBridge is
         }
 
         relocation.canceled = true;
-        IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount);
 
         emit CancelRelocation(
             chainId,
@@ -478,6 +495,8 @@ contract MultiTokenBridge is
             relocation.amount,
             nonce
         );
+
+        IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount);
     }
 
     function relocateInternal(Relocation memory relocation, OperationMode mode) internal {
@@ -489,8 +508,6 @@ contract MultiTokenBridge is
             if (!burningSuccess) {
                 revert TokenBurningFailure();
             }
-        } else {
-            // Do nothing, tokens are locked on the bridge account
         }
     }
 
