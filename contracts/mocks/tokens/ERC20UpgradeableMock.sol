@@ -7,6 +7,7 @@ import { IERC20Bridgeable } from "../../interfaces/IERC20Bridgeable.sol";
 
 /**
  * @title ERC20UpgradeableMock contract
+ * @author CloudWalk Inc.
  * @dev An implementation of the {ERC20Upgradeable} contract for test purposes.
  */
 contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
@@ -24,7 +25,7 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
     function initialize(string memory name_, string memory symbol_) public initializer {
         __ERC20_init(name_, symbol_);
 
-        //Call the unused function to achieve 100% coverage
+        // Call the unused function to achieve 100% coverage.
         isBridgeSupported(address(0));
     }
 

@@ -8,6 +8,7 @@ import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/ac
 
 /**
  * @title RescueControlUpgradeable base contract
+ * @author CloudWalk Inc.
  * @dev Allows to rescue tokens locked up in the contract by transferring to a specified address.
  *
  * This contract is used through inheritance. It introduces the {RESCUER_ROLE} role that is allowed to
@@ -23,6 +24,11 @@ abstract contract RescueControlUpgradeable is AccessControlUpgradeable {
 
     // ------------------- Functions ---------------------------------
 
+    /**
+     * @dev The internal initializer of the upgradable contract.
+     *
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable .
+     */
     function __RescueControl_init(bytes32 rescuerRoleAdmin) internal onlyInitializing {
         __Context_init_unchained();
         __ERC165_init_unchained();
@@ -30,6 +36,11 @@ abstract contract RescueControlUpgradeable is AccessControlUpgradeable {
         __RescueControl_init_unchained(rescuerRoleAdmin);
     }
 
+    /**
+     * @dev The internal unchained initializer of the upgradable contract.
+     *
+     * See {RescueControlUpgradeable-__RescueControl_init}.
+     */
     function __RescueControl_init_unchained(bytes32 rescuerRoleAdmin) internal onlyInitializing {
         _setRoleAdmin(RESCUER_ROLE, rescuerRoleAdmin);
     }

@@ -15,6 +15,7 @@ import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
 
 /**
  * @title MultiTokenBridgeUpgradeable contract
+ * @author CloudWalk Inc.
  * @dev The bridge contract that supports bridging of multiple tokens.
  * See terms in the comments of the {IMultiTokenBridge} interface.
  */
@@ -120,13 +121,19 @@ contract MultiTokenBridge is
     // -------------------- Functions -----------------------------------
 
     /**
-     * @dev The initialize function of the upgradable contract.
-     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable
+     * @dev The initializer of the upgradable contract.
+     *
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable .
      */
     function initialize() public initializer {
         __MultiTokenBridge_init();
     }
 
+    /**
+     * @dev The internal initializer of the upgradable contract.
+     *
+     * See {MultiTokenBridge-initialize}.
+     */
     function __MultiTokenBridge_init() internal onlyInitializing {
         __Context_init_unchained();
         __ERC165_init_unchained();
@@ -138,6 +145,11 @@ contract MultiTokenBridge is
         __MultiTokenBridge_init_unchained();
     }
 
+    /**
+     * @dev The unchained internal initializer of the upgradable contract.
+     *
+     * See {CompoundAgent-initialize}.
+     */
     function __MultiTokenBridge_init_unchained() internal onlyInitializing {
         _setRoleAdmin(OWNER_ROLE, OWNER_ROLE);
         _setRoleAdmin(BRIDGER_ROLE, OWNER_ROLE);
@@ -173,7 +185,7 @@ contract MultiTokenBridge is
             revert UnsupportedRelocation();
         }
 
-        address sender =  _msgSender();
+        address sender = _msgSender();
 
         uint256 newPendingRelocationCount = _pendingRelocationCounters[chainId] + 1;
         nonce = _lastProcessedRelocationNonces[chainId] + newPendingRelocationCount;
@@ -232,7 +244,7 @@ contract MultiTokenBridge is
             revert EmptyCancellationNoncesArray();
         }
 
-        uint len = nonces.length;
+        uint256 len = nonces.length;
         for (uint256 i = 0; i < len; i++) {
             cancelRelocationInternal(chainId, nonces[i]);
         }
@@ -310,7 +322,7 @@ contract MultiTokenBridge is
             revert EmptyAccommodationRelocationsArray();
         }
 
-        uint len = relocations.length;
+        uint256 len = relocations.length;
         for (uint256 i = 0; i < len; i++) {
             Relocation memory relocation = relocations[i];
             if (_accommodationModes[chainId][relocation.token] == OperationMode.Unsupported) {
@@ -471,6 +483,19 @@ contract MultiTokenBridge is
         }
     }
 
+    /**
+     * @dev Cancels a pending relocation with transferring tokens back from the bridge to the account.
+     *
+     * Requirements:
+     *
+     * - The relocation for the provided chain ID and nonce must not be processed.
+     * - The relocation for the provided chain ID and nonce must not be canceled.
+     *
+     * Emits a {CancelRelocation} event.
+     *
+     * @param chainId The destination chain ID of the relocation to cancel.
+     * @param nonce The nonce of the pending relocation to cancel.
+     */
     function cancelRelocationInternal(uint256 chainId, uint256 nonce) internal {
         uint256 lastProcessedRelocationNonce = _lastProcessedRelocationNonces[chainId];
         if (nonce <= lastProcessedRelocationNonce) {
@@ -499,6 +524,15 @@ contract MultiTokenBridge is
         IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount);
     }
 
+    /**
+     * @dev Processes a pending relocation.
+     *
+     * If the relocation is executed in `BurnOrMint` mode tokens will be burnt.
+     * If the relocation is executed in `LockOrTransfer` mode tokens will be locked on the bridge.
+     *
+     * @param relocation The structure of the relocation to process.
+     * @param mode The operation modes to process.
+     */
     function relocateInternal(Relocation memory relocation, OperationMode mode) internal {
         if (mode == OperationMode.BurnOrMint) {
             bool burningSuccess = IERC20Bridgeable(relocation.token).burnForBridging(
@@ -511,6 +545,15 @@ contract MultiTokenBridge is
         }
     }
 
+    /**
+     * @dev Accommodates a relocation.
+     *
+     * If the relocation is accommodated in `BurnOrMint` mode tokens will be minted.
+     * If the relocation is accommodated in `LockOrTransfer` mode tokens will be transferred from the bridge account.
+     *
+     * @param relocation The structure of the relocation to accommodate.
+     * @param mode The operation modes to accommodate.
+     */
     function accommodateInternal(Relocation memory relocation, OperationMode mode) internal {
         if (mode == OperationMode.BurnOrMint) {
             bool mintingSuccess = IERC20Bridgeable(relocation.token).mintForBridging(
@@ -525,7 +568,7 @@ contract MultiTokenBridge is
         }
     }
 
-    // Safely call the appropriate function from the IERC20Bridgeable interface.
+    /// @dev Safely call the appropriate function from the {IERC20Bridgeable} interface.
     function isTokenIERC20BridgeableInternal(address token) internal virtual returns (bool) {
         (bool success, bytes memory result) = token.staticcall(
             abi.encodeWithSelector(IERC20Bridgeable.isIERC20Bridgeable.selector)

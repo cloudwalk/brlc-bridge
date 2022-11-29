@@ -7,6 +7,7 @@ import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/securit
 
 /**
  * @title PauseControlUpgradeable base contract
+ * @author CloudWalk Inc.
  * @dev Extends OpenZeppelin's PausableUpgradeable contract and AccessControlUpgradeable contract.
  *
  * This contract is used through inheritance. It introduces the {PAUSER_ROLE} role that is allowed
@@ -20,6 +21,11 @@ abstract contract PauseControlUpgradeable is AccessControlUpgradeable, PausableU
 
     // ------------------- Functions ---------------------------------
 
+    /**
+     * @dev The internal initializer of the upgradable contract.
+     *
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable .
+     */
     function __PauseControl_init(bytes32 pauserRoleAdmin) internal onlyInitializing {
         __Context_init_unchained();
         __ERC165_init_unchained();
@@ -29,6 +35,11 @@ abstract contract PauseControlUpgradeable is AccessControlUpgradeable, PausableU
         __PauseControl_init_unchained(pauserRoleAdmin);
     }
 
+    /**
+     * @dev The internal unchained initializer of the upgradable contract.
+     *
+     * See {PauseControlUpgradeable-__PauseControl_init}.
+     */
     function __PauseControl_init_unchained(bytes32 pauserRoleAdmin) internal onlyInitializing {
         _setRoleAdmin(PAUSER_ROLE, pauserRoleAdmin);
     }

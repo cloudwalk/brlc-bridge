@@ -4,6 +4,7 @@ pragma solidity 0.8.16;
 
 /**
  * @title MultiTokenBridge types interface
+ * @author CloudWalk Inc.
  * @dev See terms in the comments of the {IMultiTokenBridge} interface.
  */
 interface IMultiTokenBridgeTypes {
@@ -25,6 +26,7 @@ interface IMultiTokenBridgeTypes {
 
 /**
  * @title MultiTokenBridge interface
+ * @author CloudWalk Inc.
  * @dev The bridge contract interface  that supports  bridging of multiple tokens.
  *
  * Terms used in the context of bridge contract operations:
