@@ -560,6 +560,15 @@ describe("Contract 'MultiTokenBridge'", async () => {
         multiTokenBridge.initialize()
       ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_ALREADY_INITIALIZED);
     });
+
+    it("Is reverted for the contract implementation if it is called even for the first time", async () => {
+      const multiTokenBridgeImplementation: Contract = await multiTokenBridgeFactory.deploy();
+      await multiTokenBridgeImplementation.deployed();
+
+      await expect(
+        multiTokenBridgeImplementation.initialize()
+      ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_ALREADY_INITIALIZED);
+    });
   });
 
   describe("Configuration", async () => {
