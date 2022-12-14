@@ -548,7 +548,7 @@ contract MultiTokenBridge is
     function relocateInternal(Relocation memory relocation, OperationMode mode) internal {
         if (mode == OperationMode.BurnOrMint) {
             bool burningSuccess = IERC20Bridgeable(relocation.token).burnForBridging(
-                relocation.account,
+                address(this),
                 relocation.amount
             );
             if (!burningSuccess) {

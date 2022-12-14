@@ -58,7 +58,7 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
         if (_isBurningForBridgingDisabled) {
             return false;
         }
-        _burn(msg.sender, amount);
+        _burn(account, amount);
         emit BurnForBridging(account, amount);
         return true;
     }
