@@ -15,12 +15,22 @@ interface IMultiTokenBridgeTypes {
         LockOrTransfer // 2 Relocation/accommodation is supported by locking/transferring tokens.
     }
 
+    /// @dev Enumeration of relocation statuses.
+    enum RelocationStatus {
+        Nonexistent, // 0 The relocation does not exist.
+        Pending,     // 1 The status right after relocation is requested.
+        Canceled,    // 2 The relocation has been canceled before processing.
+        Processed,   // 3 The relocation has been successfully processed by the bridge.
+        Revoked,     // 4 The relocation has been revoked during the processing. Tokens has been returned to the user.
+        Aborted      // 5 The relocation has been aborted. Tokens cannot be returned to the user for some reason.
+    }
+
     /// @dev Structure with data of a single relocation operation.
     struct Relocation {
-        address token;   // The address of the token used for relocation.
-        address account; // The account that requested the relocation.
-        uint256 amount;  // The amount of tokens to relocate.
-        bool canceled;   // The state of the relocation.
+        address token;           // The address of the token used for relocation.
+        address account;         // The account that requested the relocation.
+        uint256 amount;          // The amount of tokens to relocate.
+        RelocationStatus status; // The current status of the relocation.
     }
 }
 
@@ -46,13 +56,15 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
         uint256 nonce            // The relocation nonce.
     );
 
-    /// @dev Emitted when a pending relocation is canceled.
-    event CancelRelocation(
-        uint256 indexed chainId, // The destination chain ID of the relocation.
-        address indexed token,   // The address of the token used for relocation.
-        address indexed account, // The account that requested the relocation.
-        uint256 amount,          // The amount of tokens to relocate.
-        uint256 nonce            // The relocation nonce.
+    /// @dev Emitted when the relocation status is changed.
+    event ChangeRelocationStatus(
+        uint256 indexed chainId,        // The destination chain ID of the relocation.
+        address indexed token,          // The address of the token used for relocation.
+        address indexed account,        // The account that requested the relocation.
+        uint256 amount,                 // The amount of tokens to relocate.
+        uint256 nonce,                  // The relocation nonce.
+        RelocationStatus currentStatus, // The current status of the relocation.
+        RelocationStatus previousStatus // The previous status of the relocation.
     );
 
     /// @dev Emitted when a previously requested relocation is processed.
@@ -129,6 +141,7 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
 
     /**
      * @dev Requests a new relocation with transferring tokens from an account to the bridge.
+     *
      * The new relocation will be pending until it is processed.
      * This function is expected to be called by any account.
      *
@@ -146,10 +159,11 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     ) external returns (uint256 nonce);
 
     /**
-     * @dev Cancels a pending relocation with transferring tokens back from the bridge to the account.
+     * @dev Cancels a pending relocation with transferring tokens back from the bridge to the initiator account.
+     *
      * This function is expected to be called by the same account that requested the relocation.
      *
-     * Emits a {CancelRelocation} event.
+     * Emits a {ChangeRelocationStatus} event.
      *
      * @param chainId The destination chain ID of the relocation to cancel.
      * @param nonce The nonce of the pending relocation to cancel.
@@ -157,10 +171,11 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     function cancelRelocation(uint256 chainId, uint256 nonce) external;
 
     /**
-     * @dev Cancels multiple pending relocations with transferring tokens back from the bridge to the accounts.
+     * @dev Cancels multiple pending relocations with transferring tokens back from the bridge to initiator accounts.
+     *
      * This function can be called by a limited number of accounts that are allowed to execute bridging operations.
      *
-     * Emits a {CancelRelocation} event for each relocation.
+     * Emits a {ChangeRelocationStatus} event for each relocation.
      *
      * @param chainId The destination chain ID of the relocations to cancel.
      * @param nonces The array of pending relocation nonces to cancel.
@@ -181,6 +196,34 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
      * @param count The number of pending relocations to process.
      */
     function relocate(uint256 chainId, uint256 count) external;
+
+    /**
+     * @dev Revokes a processed relocation with returning tokens back to the initiator account.
+     *
+     * If relocations are executed in `BurnOrMint` mode tokens will be minted to the account.
+     * If relocations are executed in `LockOrTransfer` mode tokens will be transferred from the bridge to the account.
+     * This function can be called by a limited number of accounts that are allowed to execute bridging operations.
+     *
+     * Emits a {ChangeRelocationStatus} event.
+     *
+     * @param chainId The destination chain ID of the relocation to revoke.
+     * @param nonce The nonce of the relocation to revoke.
+     */
+    function revokeRelocation(uint256 chainId, uint256 nonce) external;
+
+    /**
+     * @dev Aborts a pending or processed relocation without returning the tokens to the initiator account.
+     *
+     * This function can be called by a limited number of accounts that are allowed to execute bridging operations.
+     * This function is expected to be called when there is no possibility to return tokens to the account,
+     * e.g. if the account was blacklisted during the bridge operations.
+     *
+     * Emits a {ChangeRelocationStatus} event.
+     *
+     * @param chainId The destination chain ID of the relocation to abort.
+     * @param nonce The nonce of the relocation to abort.
+     */
+    function abortRelocation(uint256 chainId, uint256 nonce) external;
 
     /**
      * @dev Accommodates tokens from a source chain.
