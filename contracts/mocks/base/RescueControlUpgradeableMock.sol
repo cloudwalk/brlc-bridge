@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.16;
 
-import { RescueControlUpgradeable } from "../../base/RescueControlUpgradeable.sol";
+import { RescueControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/RescueControlUpgradeable.sol";
 
 /**
  * @title RescueControlUpgradeableMock contract

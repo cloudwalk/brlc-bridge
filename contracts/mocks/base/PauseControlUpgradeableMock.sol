@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.16;
 
-import { PauseControlUpgradeable } from "../../base/PauseControlUpgradeable.sol";
+import { PauseControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/PauseControlUpgradeable.sol";
 
 /**
  * @title PauseControlUpgradeableMock contract
