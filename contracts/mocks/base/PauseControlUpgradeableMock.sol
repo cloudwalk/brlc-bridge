@@ -2,10 +2,11 @@
 
 pragma solidity 0.8.16;
 
-import { PauseControlUpgradeable } from "../../base/PauseControlUpgradeable.sol";
+import { PauseControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/PauseControlUpgradeable.sol";
 
 /**
  * @title PauseControlUpgradeableMock contract
+ * @author CloudWalk Inc.
  * @dev An implementation of the {PauseControlUpgradeable} contract for test purposes.
  */
 contract PauseControlUpgradeableMock is PauseControlUpgradeable {
@@ -13,7 +14,9 @@ contract PauseControlUpgradeableMock is PauseControlUpgradeable {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     /**
-     * @dev The initialize function of the upgradable contract.
+     * @dev The initializer of the upgradable contract.
+     *
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable .
      */
     function initialize() public initializer {
         _setupRole(OWNER_ROLE, _msgSender());

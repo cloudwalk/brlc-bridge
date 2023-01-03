@@ -6,6 +6,7 @@ import { IMultiTokenBridgeTypes } from "./interfaces/IMultiTokenBridge.sol";
 
 /**
  * @title MultiTokenBridge storage version 1
+ * @author CloudWalk Inc.
  * @dev See terms in the comments of the {IMultiTokenBridge} interface.
  */
 abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
@@ -30,6 +31,7 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
 
 /**
  * @title MultiTokenBridge storage
+ * @author CloudWalk Inc.
  * @dev Contains storage variables of the multi token bridge contract.
  *
  * We are following Compound's approach of upgrading new contract implementations.

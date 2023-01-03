@@ -2,10 +2,11 @@
 
 pragma solidity 0.8.16;
 
-import { RescueControlUpgradeable } from "../../base/RescueControlUpgradeable.sol";
+import { RescueControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/RescueControlUpgradeable.sol";
 
 /**
  * @title RescueControlUpgradeableMock contract
+ * @author CloudWalk Inc.
  * @dev An implementation of the {RescueControlUpgradeable} contract for test purposes.
  */
 contract RescueControlUpgradeableMock is RescueControlUpgradeable {
@@ -13,7 +14,9 @@ contract RescueControlUpgradeableMock is RescueControlUpgradeable {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     /**
-     * @dev The initialize function of the upgradable contract.
+     * @dev The initializer of the upgradable contract.
+     *
+     * See details https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable .
      */
     function initialize() public initializer {
         _setupRole(OWNER_ROLE, _msgSender());
