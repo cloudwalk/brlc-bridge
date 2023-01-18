@@ -6,9 +6,9 @@ import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC
 import { SafeERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
-import { PauseControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/PauseControlUpgradeable.sol";
-import { RescueControlUpgradeable } from "@cloudwalk-inc/brlc-contracts/contracts/base/RescueControlUpgradeable.sol";
-import { StoragePlaceholder200 } from "@cloudwalk-inc/brlc-contracts/contracts/base/StoragePlaceholder.sol";
+import { PausableExtUpgradeable } from "@cloudwalkinc/brlc-contracts/contracts/access-control/PausableExtUpgradeable.sol";
+import { RescuableUpgradeable } from "@cloudwalkinc/brlc-contracts/contracts/access-control/RescuableUpgradeable.sol";
+import { StoragePlaceholder200 } from "@cloudwalkinc/brlc-contracts/contracts/storage/StoragePlaceholder200.sol";
 import { MultiTokenBridgeStorage } from "./MultiTokenBridgeStorage.sol";
 import { IMultiTokenBridge } from "./interfaces/IMultiTokenBridge.sol";
 import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
@@ -21,8 +21,8 @@ import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
  */
 contract MultiTokenBridge is
     AccessControlUpgradeable,
-    PauseControlUpgradeable,
-    RescueControlUpgradeable,
+    PausableExtUpgradeable,
+    RescuableUpgradeable,
     StoragePlaceholder200,
     MultiTokenBridgeStorage,
     IMultiTokenBridge
@@ -154,8 +154,8 @@ contract MultiTokenBridge is
         __ERC165_init_unchained();
         __AccessControl_init_unchained();
         __Pausable_init_unchained();
-        __PauseControl_init_unchained(OWNER_ROLE);
-        __RescueControl_init_unchained(OWNER_ROLE);
+        __PausableExt_init_unchained(OWNER_ROLE);
+        __Rescuable_init_unchained(OWNER_ROLE);
 
         __MultiTokenBridge_init_unchained();
     }

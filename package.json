@@ -3,7 +3,7 @@
     "@nomicfoundation/hardhat-toolbox": "^1.0.2",
     "@openzeppelin/contracts-upgradeable": "^4.7.3",
     "@openzeppelin/hardhat-upgrades": "^1.20.0",
-    "@cloudwalk-inc/brlc-contracts": "^1.0.0",
+    "@cloudwalkinc/brlc-contracts": "^1.0.0",
     "@types/chai": "^4.3.3",
     "@types/mocha": "^9.1.1",
     "@types/node": "^18.7.2",
