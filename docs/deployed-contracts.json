@@ -1,22 +1,22 @@
 [
-    {
-        "name": "MultiTokenBridge",
-        "chainId": 2009,
-        "address": "0x00cD046Ca9C42a3Cb5E450266012E78b93D2a131"
-    },
-    {
-        "name": "MultiTokenBridge",
-        "chainId": 2008,
-        "address": "0xB95eF5D556e0E8F12d8eeEA83BDDA1490b1996B3"
-    },
-    {
-        "name": "MultiTokenBridge",
-        "chainId": 1,
-        "address": "0x4e3512Cd8E36e94a23c3832271a2fF2B7357ddfc"
-    },
-    {
-        "name": "MultiTokenBridge",
-        "chainId": 5,
-        "address": "0xa9a068A0E8Fb35C4c509FED72472df83FC9667D3"
-    }
+  {
+    "name": "MultiTokenBridge",
+    "chainId": 2009,
+    "address": "0x00cD046Ca9C42a3Cb5E450266012E78b93D2a131"
+  },
+  {
+    "name": "MultiTokenBridge",
+    "chainId": 2008,
+    "address": "0xB95eF5D556e0E8F12d8eeEA83BDDA1490b1996B3"
+  },
+  {
+    "name": "MultiTokenBridge",
+    "chainId": 1,
+    "address": "0x4e3512Cd8E36e94a23c3832271a2fF2B7357ddfc"
+  },
+  {
+    "name": "MultiTokenBridge",
+    "chainId": 5,
+    "address": "0xa9a068A0E8Fb35C4c509FED72472df83FC9667D3"
+  }
 ]
