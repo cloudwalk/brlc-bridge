@@ -9,6 +9,7 @@ import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/ac
 import { PausableExtUpgradeable } from "@cloudwalkinc/brlc-contracts/contracts/access-control/PausableExtUpgradeable.sol";
 import { RescuableUpgradeable } from "@cloudwalkinc/brlc-contracts/contracts/access-control/RescuableUpgradeable.sol";
 import { StoragePlaceholder200 } from "@cloudwalkinc/brlc-contracts/contracts/storage/StoragePlaceholder200.sol";
+
 import { MultiTokenBridgeStorage } from "./MultiTokenBridgeStorage.sol";
 import { IMultiTokenBridge } from "./interfaces/IMultiTokenBridge.sol";
 import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
@@ -450,7 +451,7 @@ contract MultiTokenBridge is
             revert RelocationModeIsImmutable();
         }
         if (newMode == OperationMode.BurnOrMint) {
-            if (!_isTokenIERC20Bridgea(token)) {
+            if (!_isTokenIERC20Bridgeable(token)) {
                 revert NonBridgeableToken();
             }
         }
@@ -489,7 +490,7 @@ contract MultiTokenBridge is
             revert AccommodationModeIsImmutable();
         }
         if (newMode == OperationMode.BurnOrMint) {
-            if (!_isTokenIERC20Bridgea(token)) {
+            if (!_isTokenIERC20Bridgeable(token)) {
                 revert NonBridgeableToken();
             }
         }
@@ -653,7 +654,7 @@ contract MultiTokenBridge is
     }
 
     /// @dev Safely call the appropriate function from the {IERC20Bridgeable} interface.
-    function _isTokenIERC20Bridgea(address token) internal virtual returns (bool) {
+    function _isTokenIERC20Bridgeable(address token) internal virtual returns (bool) {
         (bool success, bytes memory result) = token.staticcall(
             abi.encodeWithSelector(IERC20Bridgeable.isIERC20Bridgeable.selector)
         );
