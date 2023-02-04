@@ -18,8 +18,10 @@ enum RelocationStatus {
   Pending = 1,
   Canceled = 2,
   Processed = 3,
-  Revoked = 4,
+  Rejected = 4,
   Aborted = 5,
+  Postponed = 6,
+  Continued = 7,
 }
 
 interface TestTokenRelocation {
@@ -31,6 +33,8 @@ interface TestTokenRelocation {
   requested?: boolean;
   processed?: boolean;
   status?: RelocationStatus;
+  oldNonce?: number;
+  newNonce?: number;
 }
 
 interface OnChainRelocation {
@@ -138,8 +142,12 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const FAKE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001";
   const CHAIN_ID = 123;
 
+  const EVENT_NAME_ABORT_RELOCATION = "AbortRelocation";
   const EVENT_NAME_ACCOMMODATE = "Accommodate";
-  const EVENT_NAME_CHANGE_RELOCATION_STATUS = "ChangeRelocationStatus";
+  const EVENT_NAME_CANCEL_RELOCATION = "CancelRelocation";
+  const EVENT_NAME_CONTINUE_RELOCATION = "ContinueRelocation";
+  const EVENT_NAME_POSTPONE_RELOCATION = "PostponeRelocation";
+  const EVENT_NAME_REJECT_RELOCATION = "RejectRelocation";
   const EVENT_NAME_RELOCATE = "Relocate";
   const EVENT_NAME_REQUEST_RELOCATION = "RequestRelocation";
   const EVENT_NAME_SET_ACCOMMODATION_MODE = "SetAccommodationMode";
@@ -155,8 +163,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const REVERT_ERROR_IF_LACK_OF_PENDING_RELOCATIONS = "LackOfPendingRelocations";
   const REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED = "UnsupportedRelocation";
   const REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS = "InappropriateRelocationStatus";
-  const REVERT_ERROR_IF_CANCELLATION_ARRAY_OF_NONCES_IS_EMPTY = "EmptyCancellationNoncesArray";
-  const REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION = "UnauthorizedCancellation";
 
   const REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO = "ZeroAccommodationNonce";
   const REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH = "AccommodationNonceMismatch";
@@ -279,9 +285,47 @@ describe("Contract 'MultiTokenBridge'", async () => {
   async function cancelRelocations(relocations: TestTokenRelocation[]) {
     for (const relocation of relocations) {
       await proveTx(
-        multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
+        multiTokenBridge.connect(bridger).cancelRelocation(relocation.chainId, relocation.nonce)
       );
       relocation.status = RelocationStatus.Canceled;
+    }
+  }
+
+  async function rejectRelocations(relocations: TestTokenRelocation[]) {
+    for (const relocation of relocations) {
+      await proveTx(
+        multiTokenBridge.connect(bridger).rejectRelocation(relocation.chainId, relocation.nonce)
+      );
+      relocation.status = RelocationStatus.Rejected;
+    }
+  }
+
+  async function abortRelocations(relocations: TestTokenRelocation[]) {
+    for (const relocation of relocations) {
+      await proveTx(
+        multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
+      );
+      relocation.status = RelocationStatus.Aborted;
+    }
+  }
+
+  async function postponeRelocations(relocations: TestTokenRelocation[]) {
+    for (const relocation of relocations) {
+      await proveTx(
+        multiTokenBridge.connect(bridger).postponeRelocation(relocation.chainId, relocation.nonce)
+      );
+      relocation.status = RelocationStatus.Postponed;
+    }
+  }
+
+  async function continueRelocations(relocations: TestTokenRelocation[]) {
+    for (const relocation of relocations) {
+      await proveTx(
+        multiTokenBridge.connect(bridger).continueRelocation(relocation.chainId, relocation.nonce)
+      );
+      relocation.status = RelocationStatus.Continued;
+      relocation.newNonce =
+        (await multiTokenBridge.getRelocation(relocation.chainId, relocation.nonce)).newNonce.toNumber();
     }
   }
 
@@ -404,7 +448,11 @@ describe("Contract 'MultiTokenBridge'", async () => {
             if (relocation.token == expectedToken
               && !!relocation.requested
               && (operationMode === OperationMode.LockOrTransfer || !relocation.processed)
-              && !(relocation.status === RelocationStatus.Canceled || relocation.status === RelocationStatus.Revoked)
+              && !(
+                relocation.status === RelocationStatus.Canceled ||
+                relocation.status === RelocationStatus.Rejected ||
+                relocation.status === RelocationStatus.Continued
+              )
             ) {
               return relocation.amount;
             } else {
@@ -480,6 +528,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       account: user1,
       amount: 456,
       nonce: 1,
+      status: RelocationStatus.Nonexistent
     };
     await setUpContractsForRelocations([relocation]);
     return { relocation };
@@ -488,13 +537,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
   async function prepareSingleRelocationExecution(): Promise<{ relocation: TestTokenRelocation }> {
     const { relocation } = await prepareSingleRelocationRequesting();
     await requestRelocations([relocation]);
-    return { relocation };
-  }
-
-  async function prepareSingleRelocationProcessed(): Promise<{ relocation: TestTokenRelocation }> {
-    const { relocation } = await prepareSingleRelocationExecution();
-    await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-    markRelocationsAsProcessed([relocation]);
     return { relocation };
   }
 
@@ -542,7 +584,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         account: user2,
         amount: 678,
         nonce: 5,
-        status: RelocationStatus.Revoked
+        status: RelocationStatus.Rejected
       },
       {
         chainId: CHAIN_ID,
@@ -835,13 +877,13 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
   describe("Interactions related to relocations in the BurnOrMint operation mode", async () => {
     describe("Function 'requestRelocation()'", async () => {
-      async function beforeExecutionOfRequestRelocation(): Promise<{ relocation: TestTokenRelocation }> {
+      async function beforeExecutingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationRequesting();
       }
 
       it("Transfers tokens as expected, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await checkBridgeState([relocation]);
 
         await expect(
@@ -870,7 +912,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the contract is paused", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await pauseMultiTokenBridge();
 
         await expect(
@@ -883,7 +925,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the token address is zero", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await expect(
           multiTokenBridge.connect(relocation.account).requestRelocation(
             relocation.chainId,
@@ -894,7 +936,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the token amount of the relocation is zero", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await expect(
           multiTokenBridge.connect(relocation.account).requestRelocation(
             relocation.chainId,
@@ -905,7 +947,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the target chain is unsupported for relocations", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await expect(
           multiTokenBridge.connect(relocation.account).requestRelocation(
             relocation.chainId + 1,
@@ -916,7 +958,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the token is unsupported for relocations", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         await expect(
           multiTokenBridge.connect(relocation.account).requestRelocation(
             relocation.chainId,
@@ -927,7 +969,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
 
       it("Is reverted if the user has not enough token balance", async () => {
-        const { relocation } = await beforeExecutionOfRequestRelocation();
+        const { relocation } = await beforeExecutingRelocation();
         const excessTokenAmount: number = relocation.amount + 1;
 
         await expect(
@@ -941,280 +983,299 @@ describe("Contract 'MultiTokenBridge'", async () => {
     });
 
     describe("Function 'cancelRelocation()'", async () => {
-      async function beforeExecutionOfCancelRelocation(): Promise<{ relocation: TestTokenRelocation }> {
+      async function beforeCancelingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution();
       }
 
-      it("Transfers the tokens as expected, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
+      async function checkCancelingRelocation(relocation: TestTokenRelocation) {
         await checkBridgeState([relocation]);
 
         await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
+          multiTokenBridge.connect(bridger).cancelRelocation(relocation.chainId, relocation.nonce)
         ).to.changeTokenBalances(
           tokenMock1,
           [multiTokenBridge, relocation.account],
           [-relocation.amount, +relocation.amount]
         ).and.to.emit(
           multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
+          EVENT_NAME_CANCEL_RELOCATION
         ).withArgs(
           relocation.chainId,
           relocation.token.address,
           relocation.account.address,
           relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Canceled,
-          RelocationStatus.Pending
+          relocation.nonce
         );
         relocation.status = RelocationStatus.Canceled;
         await checkBridgeState([relocation]);
+      }
+
+      describe("Executes as expected and emits the correct event if the relocation status is", async () => {
+        it("Pending", async () => {
+          const { relocation } = await beforeCancelingRelocation();
+          await checkCancelingRelocation(relocation);
+        });
+
+        it("Postponed", async () => {
+          const { relocation } = await beforeCancelingRelocation();
+          await postponeRelocations([relocation]);
+          await checkCancelingRelocation(relocation);
+        });
       });
 
-      it("Is reverted if the contract is paused", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await pauseMultiTokenBridge();
+      describe("Is reverted if", async () => {
+        it("The caller does not have the bridger role", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await expect(
+            multiTokenBridge.connect(deployer).cancelRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
+        });
 
-        await expect(
-          multiTokenBridge.connect(user1).cancelRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
-      });
+        it("The contract is paused", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await pauseMultiTokenBridge();
 
-      it("Is reverted if the caller did not request the relocation", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await expect(
-          multiTokenBridge.connect(user2).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
-      });
+          await expect(
+            multiTokenBridge.connect(bridger).cancelRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+        });
 
-      it("Is reverted if a relocation with the nonce has already processed", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Processed
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce does not exists", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce + 1)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is aborted", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Aborted
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is revoked", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Revoked
-        );
+        // Other tests for reverting with a single relocation see in a separate "Complex ..." section below
       });
     });
 
-    describe("Function 'cancelRelocations()'", async () => {
-      async function beforeExecutionOfCancelRelocations(): Promise<{
-        relocations: TestTokenRelocation[],
-        relocationNonces: number[]
-      }> {
+    describe("Function 'rejectRelocation()'", async () => {
+      async function beforeRejectingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachTest(OperationMode.BurnOrMint);
-
-        const relocations: TestTokenRelocation[] = [
-          {
-            chainId: CHAIN_ID,
-            token: tokenMock1,
-            account: user1,
-            amount: 34,
-            nonce: 1,
-          },
-          {
-            chainId: CHAIN_ID,
-            token: tokenMock2,
-            account: user2,
-            amount: 56,
-            nonce: 2,
-          },
-        ];
-
-        const relocationNonces: number[] = relocations.map((relocation: TestTokenRelocation) => relocation.nonce);
-        await setUpContractsForRelocations(relocations);
-        await requestRelocations(relocations);
-
-        return { relocations, relocationNonces };
+        return prepareSingleRelocationExecution();
       }
 
-      async function checkTokenTransfers(
-        tx: TransactionResponse,
-        relocations: TestTokenRelocation[],
-        tokenMock: Contract
-      ) {
-        const relocationAccountAddresses: string[] =
-          relocations.map((relocation: TestTokenRelocation) => relocation.account.address);
-        const expectedAccountBalanceChangesForTokenMock: number[] = getAmountByTokenAndAddresses(
-          relocations,
-          tokenMock,
-          relocationAccountAddresses,
-          RelocationStatus.Pending
-        );
-        const expectedBridgeBalanceChangeForTokenMock =
-          countNumberArrayTotal(expectedAccountBalanceChangesForTokenMock);
-
-        await expect(tx).to.changeTokenBalances(
-          tokenMock,
-          [multiTokenBridge, ...relocationAccountAddresses],
-          [-expectedBridgeBalanceChangeForTokenMock, ...expectedAccountBalanceChangesForTokenMock]
-        );
-      }
-
-      async function checkEvent(tx: TransactionResponse, relocation: TestTokenRelocation) {
-        await expect(tx).to.emit(
+      async function checkRejectingRelocation(relocation: TestTokenRelocation) {
+        await checkBridgeState([relocation]);
+        await expect(
+          multiTokenBridge.connect(bridger).rejectRelocation(relocation.chainId, relocation.nonce)
+        ).to.changeTokenBalances(
+          tokenMock1,
+          [multiTokenBridge, relocation.account],
+          [-relocation.amount, +relocation.amount]
+        ).and.to.emit(
           multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
+          EVENT_NAME_REJECT_RELOCATION
         ).withArgs(
-          CHAIN_ID,
+          relocation.chainId,
           relocation.token.address,
           relocation.account.address,
           relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Canceled,
-          RelocationStatus.Pending
+          relocation.nonce
         );
+        relocation.status = RelocationStatus.Rejected;
+        await checkBridgeState([relocation]);
       }
 
-      it("Transfers the tokens as expected, emits the correct events, changes the state properly", async () => {
-        const { relocations, relocationNonces } = await beforeExecutionOfCancelRelocations();
-        await checkBridgeState(relocations);
+      describe("Executes as expected and emits the correct event if the relocation status is", async () => {
+        it("Pending", async () => {
+          const { relocation } = await beforeRejectingRelocation();
+          await checkRejectingRelocation(relocation);
+        });
 
-        const tx: TransactionResponse =
-          await multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, relocationNonces);
-        await checkEvent(tx, relocations[0]);
-        await checkEvent(tx, relocations[1]);
-        await checkTokenTransfers(tx, relocations, tokenMock1);
-        await checkTokenTransfers(tx, relocations, tokenMock2);
-
-        relocations.forEach(
-          (relocation: TestTokenRelocation) => relocation.status = RelocationStatus.Canceled
-        );
-        await checkBridgeState(relocations);
+        it("Postponed", async () => {
+          const { relocation } = await beforeRejectingRelocation();
+          await postponeRelocations([relocation]);
+          await checkRejectingRelocation(relocation);
+        });
       });
 
-      it("Is reverted if the contract is paused", async () => {
+      describe("Is reverted if", async () => {
+        it("The caller does not have the bridger role", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await expect(
+            multiTokenBridge.connect(deployer).rejectRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
+        });
+
+        it("The contract is paused", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await pauseMultiTokenBridge();
+
+          await expect(
+            multiTokenBridge.connect(bridger).rejectRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+        });
+
+        // Other tests for reverting with a single relocation see in a separate "Complex ..." section below
+      });
+    });
+
+    describe("Function 'abortRelocation()'", async () => {
+      async function beforeAbortingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachTest(OperationMode.BurnOrMint);
-        await pauseMultiTokenBridge();
+        return prepareSingleRelocationExecution();
+      }
+
+      async function checkAbortingRelocation(relocation: TestTokenRelocation) {
+        await checkBridgeState([relocation]);
+        await expect(
+          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
+        ).to.changeTokenBalances(
+          tokenMock1,
+          [multiTokenBridge, relocation.account],
+          [0, 0]
+        ).and.to.emit(
+          multiTokenBridge,
+          EVENT_NAME_ABORT_RELOCATION
+        ).withArgs(
+          relocation.chainId,
+          relocation.token.address,
+          relocation.account.address,
+          relocation.amount,
+          relocation.nonce
+        );
+        relocation.status = RelocationStatus.Aborted;
+        await checkBridgeState([relocation]);
+      }
+
+      describe("Executes as expected and emits the correct event if the relocation status is", async () => {
+        it("Pending", async () => {
+          const { relocation } = await beforeAbortingRelocation();
+          await checkAbortingRelocation(relocation);
+        });
+
+        it("Postponed", async () => {
+          const { relocation } = await beforeAbortingRelocation();
+          await postponeRelocations([relocation]);
+          await checkAbortingRelocation(relocation);
+        });
+      });
+
+      describe("Is reverted if", async () => {
+        it("The caller does not have the bridger role", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await expect(
+            multiTokenBridge.connect(deployer).abortRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
+        });
+
+        it("The contract is paused", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          await pauseMultiTokenBridge();
+
+          await expect(
+            multiTokenBridge.connect(bridger).abortRelocation(CHAIN_ID, 0)
+          ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+        });
+
+        // Other tests for reverting with a single relocation see in a separate "Complex ..." section below
+      });
+    });
+
+    describe("Function 'postponeRelocation()'", async () => {
+      async function beforePostponingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
+        await beforeEachTest(OperationMode.BurnOrMint);
+        return prepareSingleRelocationExecution();
+      }
+
+      it("Executes as expected and emits the correct event if the relocation status is pending", async () => {
+        const { relocation } = await beforePostponingRelocation();
 
         await expect(
-          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, [])
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+          multiTokenBridge.connect(bridger).postponeRelocation(relocation.chainId, relocation.nonce)
+        ).to.changeTokenBalances(
+          tokenMock1,
+          [multiTokenBridge, relocation.account],
+          [0, 0]
+        ).and.to.emit(
+          multiTokenBridge,
+          EVENT_NAME_POSTPONE_RELOCATION
+        ).withArgs(
+          relocation.chainId,
+          relocation.token.address,
+          relocation.account.address,
+          relocation.amount,
+          relocation.nonce
+        );
+        relocation.status = RelocationStatus.Postponed;
+        await checkBridgeState([relocation]);
       });
 
       it("Is reverted if the caller does not have the bridger role", async () => {
         await beforeEachTest(OperationMode.BurnOrMint);
         await expect(
-          multiTokenBridge.connect(deployer).cancelRelocations(CHAIN_ID, [])
+          multiTokenBridge.connect(deployer).postponeRelocation(CHAIN_ID, 0)
         ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
       });
 
-      it("Is reverted if the input array of nonces is empty", async () => {
+      it("Is reverted if the contract is paused", async () => {
+        await beforeEachTest(OperationMode.BurnOrMint);
+        await pauseMultiTokenBridge();
+
+        await expect(
+          multiTokenBridge.connect(bridger).postponeRelocation(CHAIN_ID, 0)
+        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+      });
+
+      // Other tests for reverting with a single relocation see in a separate "Complex ..." section below
+    });
+
+    describe("Function 'continueRelocation()'", async () => {
+      async function beforeContinuingRelocation(): Promise<{ relocation: TestTokenRelocation }> {
+        await beforeEachTest(OperationMode.BurnOrMint);
+        return prepareSingleRelocationExecution();
+      }
+
+      it("Executes as expected and emits the correct event", async () => {
+        const { relocation: oldRelocation } = await beforeContinuingRelocation();
+        const newRelocation: TestTokenRelocation = { ...oldRelocation };
+        newRelocation.nonce = oldRelocation.nonce + 1;
+        await postponeRelocations([oldRelocation]);
+
+        await expect(
+          multiTokenBridge.connect(bridger).continueRelocation(oldRelocation.chainId, oldRelocation.nonce)
+        ).to.changeTokenBalances(
+          oldRelocation.token,
+          [multiTokenBridge, oldRelocation.account],
+          [0, 0]
+        ).and.to.emit(
+          multiTokenBridge,
+          EVENT_NAME_CONTINUE_RELOCATION
+        ).withArgs(
+          oldRelocation.chainId,
+          oldRelocation.token.address,
+          oldRelocation.account.address,
+          oldRelocation.amount,
+          oldRelocation.nonce,
+          newRelocation.nonce
+        );
+        oldRelocation.status = RelocationStatus.Continued;
+        newRelocation.requested = true;
+        newRelocation.status = RelocationStatus.Pending;
+        await checkBridgeState([oldRelocation, newRelocation]);
+
+        const oldOnChainRelocation = await multiTokenBridge.getRelocation(oldRelocation.chainId, oldRelocation.nonce);
+        const newOnChainRelocation = await multiTokenBridge.getRelocation(newRelocation.chainId, newRelocation.nonce);
+        expect(oldOnChainRelocation.oldNonce).to.equal(0);
+        expect(oldOnChainRelocation.newNonce).to.equal(newRelocation.nonce);
+        expect(newOnChainRelocation.oldNonce).to.equal(oldRelocation.nonce);
+        expect(newOnChainRelocation.newNonce).to.equal(0);
+      });
+
+      it("Is reverted if the caller does not have the bridger role", async () => {
         await beforeEachTest(OperationMode.BurnOrMint);
         await expect(
-          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, [])
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_CANCELLATION_ARRAY_OF_NONCES_IS_EMPTY);
+          multiTokenBridge.connect(deployer).continueRelocation(CHAIN_ID, 0)
+        ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
       });
 
-      it("Is reverted if some input nonce belongs to a processed relocation", async () => {
-        const { relocationNonces, relocations } = await beforeExecutionOfCancelRelocations();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocations[0].chainId, 1));
-
-        await expect(multiTokenBridge.connect(bridger).cancelRelocations(
-          CHAIN_ID,
-          relocationNonces
-        )).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Processed);
-      });
-
-      it("Is reverted if some input nonce belongs to a nonexistent relocation", async () => {
-        const { relocationNonces } = await beforeExecutionOfCancelRelocations();
-        await expect(multiTokenBridge.connect(bridger).cancelRelocations(
-          CHAIN_ID,
-          [
-            Math.max(...relocationNonces) + 1,
-            ...relocationNonces
-          ]
-        )).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Nonexistent);
-      });
-
-      it("Is reverted if a relocation with some nonce was already canceled", async () => {
-        const { relocations, relocationNonces } = await beforeExecutionOfCancelRelocations();
-        await cancelRelocations([relocations[1]]);
+      it("Is reverted if the contract is paused", async () => {
+        await beforeEachTest(OperationMode.BurnOrMint);
+        await pauseMultiTokenBridge();
 
         await expect(
-          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, relocationNonces)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Canceled);
+          multiTokenBridge.connect(bridger).continueRelocation(CHAIN_ID, 0)
+        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
       });
 
-      it("Is reverted if some input nonce belongs to an aborted relocation", async () => {
-        const { relocationNonces, relocations } = await beforeExecutionOfCancelRelocations();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocations[0].chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(relocations[0].chainId, relocations[0].nonce));
-
-        await expect(multiTokenBridge.connect(bridger).cancelRelocations(
-          CHAIN_ID,
-          relocationNonces
-        )).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Aborted);
-      });
-
-      it("Is reverted if some input nonce belongs to a revoked relocation", async () => {
-        const { relocationNonces, relocations } = await beforeExecutionOfCancelRelocations();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocations[0].chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(relocations[0].chainId, relocations[0].nonce));
-
-        await expect(multiTokenBridge.connect(bridger).cancelRelocations(
-          CHAIN_ID,
-          relocationNonces
-        )).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Revoked);
-      });
+      // Other tests for reverting with a single relocation see in a separate "Complex ..." section below
     });
 
     describe("Function 'relocate()'", async () => {
@@ -1311,209 +1372,101 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
     });
 
-    describe("Function 'abortRelocation()'", async () => {
-      async function beforeExecutionOfAbortRelocation(): Promise<{ relocation: TestTokenRelocation }> {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        return prepareSingleRelocationProcessed();
+    describe("Complex scenario with a single relocation", async () => {
+      async function checkAllRelocationStatusChangingFunctionsFailure(relocation: TestTokenRelocation) {
+        await expect(
+          multiTokenBridge.connect(bridger).cancelRelocation(relocation.chainId, relocation.nonce)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
+        ).withArgs(
+          relocation.status
+        );
+
+        await expect(
+          multiTokenBridge.connect(bridger).rejectRelocation(relocation.chainId, relocation.nonce)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
+        ).withArgs(
+          relocation.status
+        );
+
+        await expect(
+          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
+        ).withArgs(
+          relocation.status
+        );
+
+        await expect(
+          multiTokenBridge.connect(bridger).postponeRelocation(relocation.chainId, relocation.nonce)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
+        ).withArgs(
+          relocation.status
+        );
+
+        if (relocation.status === RelocationStatus.Postponed) {
+          return;
+        }
+
+        await expect(
+          multiTokenBridge.connect(bridger).continueRelocation(relocation.chainId, relocation.nonce)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
+        ).withArgs(
+          relocation.status
+        );
       }
 
-      it("Transfers no tokens, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfAbortRelocation();
-        await checkBridgeState([relocation]);
+      describe("All status changing functions fail if a relocation with the provided nonce", async () => {
+        it("Does not exist", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationRequesting();
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
 
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
-        ).to.changeTokenBalances(
-          tokenMock1,
-          [multiTokenBridge, relocation.account],
-          [0, 0]
-        ).and.to.emit(
-          multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
-        ).withArgs(
-          relocation.chainId,
-          relocation.token.address,
-          relocation.account.address,
-          relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Aborted,
-          RelocationStatus.Processed
-        );
-        relocation.status = RelocationStatus.Aborted;
-        await checkBridgeState([relocation]);
-      });
+        it("Is already processed", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+          await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
+          relocation.status = RelocationStatus.Processed;
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
 
-      it("Is reverted if the contract is paused", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await pauseMultiTokenBridge();
+        it("Is canceled", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+          await cancelRelocations([relocation]);
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
 
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
-      });
+        it("Is rejected", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+          await rejectRelocations([relocation]);
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
 
-      it("Is reverted if the caller does not have the bridger role", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await expect(
-          multiTokenBridge.abortRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
-      });
+        it("Is aborted", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+          await abortRelocations([relocation]);
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
 
-      it("Is reverted if a relocation with the nonce does not exists", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Nonexistent
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is pending", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        const { relocation } = await prepareSingleRelocationExecution();
-
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Pending
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is already aborted", async () => {
-        const { relocation } = await beforeExecutionOfAbortRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Aborted
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is revoked", async () => {
-        const { relocation } = await beforeExecutionOfAbortRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Revoked
-        );
-      });
-    });
-
-    describe("Function 'revokeRelocation()'", async () => {
-      async function beforeExecutionOfRevokeRelocation(): Promise<{ relocation: TestTokenRelocation }> {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        return prepareSingleRelocationProcessed();
-      }
-
-      it("Mints tokens as expected, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfRevokeRelocation();
-        await checkBridgeState([relocation]);
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce)
-        ).to.changeTokenBalances(
-          tokenMock1,
-          [multiTokenBridge, relocation.account],
-          [0, +relocation.amount]
-        ).and.to.emit(
-          multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
-        ).withArgs(
-          relocation.chainId,
-          relocation.token.address,
-          relocation.account.address,
-          relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Revoked,
-          RelocationStatus.Processed
-        );
-        relocation.status = RelocationStatus.Revoked;
-        await checkBridgeState([relocation]);
-      });
-
-      it("Is reverted if the contract is paused", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await pauseMultiTokenBridge();
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
-      });
-
-      it("Is reverted if the caller does not have the bridger role", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await expect(
-          multiTokenBridge.revokeRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
-      });
-
-      it("Is reverted if a relocation with the nonce does not exists", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Nonexistent
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is pending", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        const { relocation } = await prepareSingleRelocationExecution();
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Pending
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is aborted", async () => {
-        const { relocation } = await beforeExecutionOfRevokeRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Aborted
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is already revoked", async () => {
-        const { relocation } = await beforeExecutionOfRevokeRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Revoked
-        );
+        it("Is continued", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+          await postponeRelocations([relocation]);
+          await continueRelocations([relocation]);
+          await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
       });
     });
 
@@ -1568,40 +1521,10 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
         // Try to cancel already processed relocation
         await expect(
-          multiTokenBridge.connect(relocations[0].account).cancelRelocation(CHAIN_ID, relocations[0].nonce)
+          multiTokenBridge.connect(bridger).cancelRelocation(CHAIN_ID, relocations[0].nonce)
         ).to.be.revertedWithCustomError(
           multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
         ).withArgs(RelocationStatus.Processed);
-
-        // Try to cancel a relocation of another user
-        await expect(
-          multiTokenBridge.connect(relocations[1].account).cancelRelocation(CHAIN_ID, relocations[2].nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
-
-        // Try to cancel several relocations including the processed one
-        await expect(
-          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, [
-            relocations[2].nonce,
-            relocations[1].nonce,
-            relocations[0].nonce,
-          ])
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Processed);
-
-        // Try to cancel several relocations including one that is out of the pending range
-        await expect(
-          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, [
-            relocations[3].nonce,
-            relocations[2].nonce,
-            relocations[1].nonce,
-          ])
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(RelocationStatus.Nonexistent);
 
         // Check that state of the bridge has not changed
         await checkBridgeState(relocations);
@@ -1610,31 +1533,13 @@ describe("Contract 'MultiTokenBridge'", async () => {
         await requestRelocations([relocations[3]]);
         await checkBridgeState(relocations);
 
-        // Cancel two last relocations by the bridger
-        await proveTx(
-          multiTokenBridge.connect(bridger).cancelRelocations(
-            CHAIN_ID,
-            [relocations[3].nonce, relocations[2].nonce]
-          )
-        );
-        [relocations[3], relocations[2]].forEach(
-          (relocation: TestTokenRelocation) => relocation.status = RelocationStatus.Canceled
-        );
+        // Cancel two last relocations
+        await cancelRelocations([relocations[3], relocations[2]]);
         await checkBridgeState(relocations);
 
         // Process all the pending relocations
         await proveTx(multiTokenBridge.connect(bridger).relocate(CHAIN_ID, 3));
         markRelocationsAsProcessed(relocations);
-        await checkBridgeState(relocations);
-
-        // Revoke the second relocation
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(CHAIN_ID, relocations[1].nonce));
-        relocations[1].status = RelocationStatus.Revoked;
-        await checkBridgeState(relocations);
-
-        // Abort the first relocation
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(CHAIN_ID, relocations[0].nonce));
-        relocations[0].status = RelocationStatus.Aborted;
         await checkBridgeState(relocations);
       });
     });
@@ -1771,39 +1676,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
           OperationMode.LockOrTransfer
         );
         markRelocationsAsProcessed([relocation]);
-        await checkBridgeState([relocation]);
-      });
-    });
-
-    describe("Function 'revokeRelocation()'", async () => {
-      async function beforeExecutionOfRevokeRelocation(): Promise<{ relocation: TestTokenRelocation }> {
-        await beforeEachTest(OperationMode.LockOrTransfer);
-        return prepareSingleRelocationProcessed();
-      }
-
-      it("Transfers tokens as expected, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfRevokeRelocation();
-        await checkBridgeState([relocation]);
-
-        await expect(
-          multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce)
-        ).to.changeTokenBalances(
-          tokenMock1,
-          [multiTokenBridge, relocation.account],
-          [-relocation.amount, +relocation.amount]
-        ).and.to.emit(
-          multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
-        ).withArgs(
-          relocation.chainId,
-          relocation.token.address,
-          relocation.account.address,
-          relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Revoked,
-          RelocationStatus.Processed
-        );
-        relocation.status = RelocationStatus.Revoked;
         await checkBridgeState([relocation]);
       });
     });
