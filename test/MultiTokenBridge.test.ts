@@ -42,13 +42,24 @@ interface OnChainRelocation {
   account: string;
   amount: BigNumber;
   status: RelocationStatus;
+  oldNonce: number;
+  newNonce: number;
+}
+
+interface OnChainAccommodation {
+  token: string;
+  account: string;
+  amount: BigNumber;
+  status: RelocationStatus;
 }
 
 const defaultOnChainRelocation: OnChainRelocation = {
   token: ethers.constants.AddressZero,
   account: ethers.constants.AddressZero,
   amount: ethers.constants.Zero,
-  status: RelocationStatus.Nonexistent
+  status: RelocationStatus.Nonexistent,
+  oldNonce: 0,
+  newNonce: 0
 };
 
 interface BridgeStateForChainId {
@@ -61,6 +72,17 @@ interface BridgeStateForChainId {
 }
 
 function toOnChainRelocation(relocation: TestTokenRelocation): OnChainRelocation {
+  return {
+    token: relocation.token.address,
+    account: relocation.account.address,
+    amount: BigNumber.from(relocation.amount),
+    status: relocation.status || RelocationStatus.Nonexistent,
+    oldNonce: relocation.oldNonce || 0,
+    newNonce: relocation.newNonce || 0
+  };
+}
+
+function toOnChainAccommodation(relocation: TestTokenRelocation): OnChainAccommodation {
   return {
     token: relocation.token.address,
     account: relocation.account.address,
@@ -90,6 +112,14 @@ function checkEquality(
   expect(actualOnChainRelocation.status).to.equal(
     expectedRelocation.status,
     `relocation[${relocationIndex}].status is incorrect, chainId=${chainId}`
+  );
+  expect(actualOnChainRelocation.oldNonce).to.equal(
+    expectedRelocation.oldNonce,
+    `relocation[${relocationIndex}].oldNonce is incorrect, chainId=${chainId}`
+  );
+  expect(actualOnChainRelocation.newNonce).to.equal(
+    expectedRelocation.newNonce,
+    `relocation[${relocationIndex}].newNonce is incorrect, chainId=${chainId}`
   );
 }
 
@@ -324,9 +354,19 @@ describe("Contract 'MultiTokenBridge'", async () => {
         multiTokenBridge.connect(bridger).continueRelocation(relocation.chainId, relocation.nonce)
       );
       relocation.status = RelocationStatus.Continued;
-      relocation.newNonce =
-        (await multiTokenBridge.getRelocation(relocation.chainId, relocation.nonce)).newNonce.toNumber();
     }
+  }
+
+  function treatRelocationAsLastOneBeforeContinuing(relocation: TestTokenRelocation): TestTokenRelocation {
+    const newRelocation: TestTokenRelocation = { ...relocation };
+
+    relocation.newNonce = relocation.nonce + 1;
+
+    newRelocation.status = RelocationStatus.Pending;
+    newRelocation.nonce = relocation.newNonce;
+    newRelocation.oldNonce = relocation.nonce;
+
+    return newRelocation;
   }
 
   async function pauseMultiTokenBridge() {
@@ -542,60 +582,20 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
   async function prepareAccommodations(): Promise<{
     relocations: TestTokenRelocation[],
-    onChainRelocations: OnChainRelocation[],
-    firstRelocationNonce: number
+    accommodations: OnChainAccommodation[],
+    firstNonce: number
   }> {
-    const relocations: TestTokenRelocation[] = [
-      {
+    const relocations: TestTokenRelocation[] = [1, 2, 3, 4].map(function (nonce: number): TestTokenRelocation {
+      return {
         chainId: CHAIN_ID,
-        token: tokenMock1,
-        account: user1,
-        amount: 234,
-        nonce: 1,
-        status: RelocationStatus.Canceled
-      },
-      {
-        chainId: CHAIN_ID,
-        token: tokenMock1,
-        account: user2,
-        amount: 345,
-        nonce: 2,
+        token: (nonce <= 2) ? tokenMock1 : tokenMock2,
+        account: (nonce % 2) === 1 ? user1 : user2,
+        amount: nonce * 100,
+        nonce: nonce,
         status: RelocationStatus.Processed
-      },
-      {
-        chainId: CHAIN_ID,
-        token: tokenMock2,
-        account: user1,
-        amount: 456,
-        nonce: 3,
-        status: RelocationStatus.Aborted
-      },
-      {
-        chainId: CHAIN_ID,
-        token: tokenMock2,
-        account: user2,
-        amount: 567,
-        nonce: 4,
-        status: RelocationStatus.Processed
-      },
-      {
-        chainId: CHAIN_ID,
-        token: tokenMock2,
-        account: user2,
-        amount: 678,
-        nonce: 5,
-        status: RelocationStatus.Rejected
-      },
-      {
-        chainId: CHAIN_ID,
-        token: tokenMock2,
-        account: user2,
-        amount: 789,
-        nonce: 6,
-        status: RelocationStatus.Pending
-      },
-    ];
-    const onChainRelocations: OnChainRelocation[] = relocations.map(toOnChainRelocation);
+      };
+    });
+    const accommodations: OnChainAccommodation[] = relocations.map(toOnChainAccommodation);
 
     await proveTx(
       multiTokenBridge.setAccommodationMode(
@@ -612,7 +612,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       )
     );
 
-    return { relocations, onChainRelocations, firstRelocationNonce: relocations[0].nonce };
+    return { relocations, accommodations, firstNonce: relocations[0].nonce };
   }
 
   describe("Function 'initialize()'", async () => {
@@ -1225,8 +1225,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       it("Executes as expected and emits the correct event", async () => {
         const { relocation: oldRelocation } = await beforeContinuingRelocation();
-        const newRelocation: TestTokenRelocation = { ...oldRelocation };
-        newRelocation.nonce = oldRelocation.nonce + 1;
         await postponeRelocations([oldRelocation]);
 
         await expect(
@@ -1244,19 +1242,11 @@ describe("Contract 'MultiTokenBridge'", async () => {
           oldRelocation.account.address,
           oldRelocation.amount,
           oldRelocation.nonce,
-          newRelocation.nonce
+          oldRelocation.nonce + 1
         );
         oldRelocation.status = RelocationStatus.Continued;
-        newRelocation.requested = true;
-        newRelocation.status = RelocationStatus.Pending;
+        const newRelocation: TestTokenRelocation = treatRelocationAsLastOneBeforeContinuing(oldRelocation);
         await checkBridgeState([oldRelocation, newRelocation]);
-
-        const oldOnChainRelocation = await multiTokenBridge.getRelocation(oldRelocation.chainId, oldRelocation.nonce);
-        const newOnChainRelocation = await multiTokenBridge.getRelocation(newRelocation.chainId, newRelocation.nonce);
-        expect(oldOnChainRelocation.oldNonce).to.equal(0);
-        expect(oldOnChainRelocation.newNonce).to.equal(newRelocation.nonce);
-        expect(newOnChainRelocation.oldNonce).to.equal(oldRelocation.nonce);
-        expect(newOnChainRelocation.newNonce).to.equal(0);
       });
 
       it("Is reverted if the caller does not have the bridger role", async () => {
@@ -1466,6 +1456,27 @@ describe("Contract 'MultiTokenBridge'", async () => {
           await postponeRelocations([relocation]);
           await continueRelocations([relocation]);
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
+        });
+      });
+
+      describe("Several postponements and continuations", async () => {
+        it("Are executed as expected", async () => {
+          await beforeEachTest(OperationMode.BurnOrMint);
+          const { relocation } = await prepareSingleRelocationExecution();
+
+          await postponeRelocations([relocation]);
+          await checkBridgeState([relocation]);
+
+          await continueRelocations([relocation]);
+          const newRelocation: TestTokenRelocation = treatRelocationAsLastOneBeforeContinuing(relocation);
+          await checkBridgeState([relocation, newRelocation]);
+
+          await postponeRelocations([newRelocation]);
+          await checkBridgeState([relocation, newRelocation]);
+
+          await continueRelocations([newRelocation]);
+          const newRelocation2: TestTokenRelocation = treatRelocationAsLastOneBeforeContinuing(newRelocation);
+          await checkBridgeState([relocation, newRelocation, newRelocation2]);
         });
       });
     });
@@ -1685,20 +1696,20 @@ describe("Contract 'MultiTokenBridge'", async () => {
     describe("Function 'accommodate()'", async () => {
       async function beforeExecutionOfAccommodate(): Promise<{
         relocations: TestTokenRelocation[],
-        onChainRelocations: OnChainRelocation[],
-        firstRelocationNonce: number
+        accommodations: OnChainAccommodation[],
+        firstNonce: number
       }> {
         await beforeEachTest(OperationMode.BurnOrMint);
         return prepareAccommodations();
       }
 
       it("Mints tokens as expected, emits the correct events, changes the state properly", async () => {
-        const { relocations, onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { relocations, accommodations, firstNonce } = await beforeExecutionOfAccommodate();
 
         const tx: TransactionResponse = await multiTokenBridge.connect(bridger).accommodate(
           CHAIN_ID,
-          firstRelocationNonce,
-          onChainRelocations
+          firstNonce,
+          accommodations
         );
         await checkAccommodationEvents(tx, relocations);
         await checkAccommodationTokenTransfers(tx, relocations, tokenMock1);
@@ -1708,122 +1719,149 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.equal(relocations[relocations.length - 1].nonce);
       });
 
+      it("Does not mint tokens and emit events if the accommodation status is not `Processed`", async () => {
+        const { relocations, accommodations: [accommodation], firstNonce } = await beforeExecutionOfAccommodate();
+        const { token, account, amount } = accommodation;
+        const accommodations: OnChainAccommodation[] = [
+          { token, account, amount, status: RelocationStatus.Canceled },
+          { token, account, amount, status: RelocationStatus.Rejected },
+          { token, account, amount, status: RelocationStatus.Aborted },
+          { token, account, amount, status: RelocationStatus.Pending },
+          { token, account, amount, status: RelocationStatus.Continued }
+        ];
+
+        const tx: TransactionResponse = await multiTokenBridge.connect(bridger).accommodate(
+          CHAIN_ID,
+          firstNonce,
+          accommodations
+        );
+        await expect(tx).to.changeTokenBalances(
+          relocations[0].token,
+          [multiTokenBridge, relocations[0].account],
+          [0, 0]
+        );
+        await expect(tx).not.to.emit(
+          multiTokenBridge,
+          EVENT_NAME_ACCOMMODATE
+        );
+      });
+
       it("Is reverted if the contract is paused", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await pauseMultiTokenBridge();
 
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
       });
 
       it("Is reverted if the caller does not have the bridger role", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await expect(
           multiTokenBridge.connect(deployer).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
       });
 
       it("Is reverted if the chain is unsupported for accommodations", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID + 1,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
       });
 
       it("Is reverted if one of the token contracts is unsupported for accommodations", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].token = FAKE_TOKEN_ADDRESS;
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
+        accommodations[1].token = FAKE_TOKEN_ADDRESS;
 
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
       });
 
       it("Is reverted if the first relocation nonce is zero", async () => {
-        const { onChainRelocations } = await beforeExecutionOfAccommodate();
+        const { accommodations } = await beforeExecutionOfAccommodate();
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
             0,
-            onChainRelocations
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO);
       });
 
       it("Is reverted if the first relocation nonce does not equal the last accommodation nonce +1", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce + 1,
-            onChainRelocations
+            firstNonce + 1,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH);
       });
 
       it("Is reverted if the input array of relocations is empty", async () => {
-        const { firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { firstNonce } = await beforeExecutionOfAccommodate();
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
+            firstNonce,
             []
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ARRAY_OF_RELOCATIONS_IS_EMPTY);
       });
 
       it("Is reverted if one of the input accounts has zero address", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].account = ethers.constants.AddressZero;
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
+        accommodations[1].account = ethers.constants.AddressZero;
 
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS);
       });
 
       it("Is reverted if one of the input amounts is zero", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].amount = ethers.constants.Zero;
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
+        accommodations[1].amount = ethers.constants.Zero;
 
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO);
       });
 
       it("Is reverted if minting of tokens had failed", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await proveTx(tokenMock1.disableMintingForBridging());
 
         await expect(
           multiTokenBridge.connect(bridger).accommodate(
             CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
+            firstNonce,
+            accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED);
       });
@@ -1834,22 +1872,22 @@ describe("Contract 'MultiTokenBridge'", async () => {
     describe("Function 'accommodate()'", async () => {
       async function beforeExecutionOfAccommodate(): Promise<{
         relocations: TestTokenRelocation[],
-        onChainRelocations: OnChainRelocation[],
-        firstRelocationNonce: number
+        accommodations: OnChainAccommodation[],
+        firstNonce: number
       }> {
         await beforeEachTest(OperationMode.LockOrTransfer);
         return prepareAccommodations();
       }
 
       it("Transfers tokens as expected, emits the correct events, changes the state properly", async () => {
-        const { relocations, onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+        const { relocations, accommodations, firstNonce } = await beforeExecutionOfAccommodate();
         await proveTx(tokenMock1.mint(multiTokenBridge.address, ethers.constants.MaxUint256));
         await proveTx(tokenMock2.mint(multiTokenBridge.address, ethers.constants.MaxUint256));
 
         const tx: TransactionResponse = multiTokenBridge.connect(bridger).accommodate(
           CHAIN_ID,
-          firstRelocationNonce,
-          onChainRelocations
+          firstNonce,
+          accommodations
         );
         await checkAccommodationEvents(tx, relocations);
         await checkAccommodationTokenTransfers(tx, relocations, tokenMock1);
