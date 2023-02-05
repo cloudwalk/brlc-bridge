@@ -13,6 +13,7 @@ import { StoragePlaceholder200 } from "@cloudwalkinc/brlc-contracts/contracts/st
 import { MultiTokenBridgeStorage } from "./MultiTokenBridgeStorage.sol";
 import { IMultiTokenBridge } from "./interfaces/IMultiTokenBridge.sol";
 import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
+import { IBridgeFeeOracle } from "./interfaces/IBridgeFeeOracle.sol";
 
 /**
  * @title MultiTokenBridgeUpgradeable contract
@@ -52,6 +53,18 @@ contract MultiTokenBridge is
         address indexed token,   // The address of the token used for accommodation.
         OperationMode oldMode,   // The old mode of accommodation.
         OperationMode newMode    // The new mode of accommodation.
+    );
+
+    /// @dev Emitted when the fee oracle is changed.
+    event SetFeeOracle(
+        address oldOracle, // The address of the old fee oracle.
+        address newOracle  // The address of the new fee oracle.
+    );
+
+    /// @dev Emitted when the fee collector address is changed.
+    event SetFeeCollector(
+        address oldCollector, // The address of the old fee collector.
+        address newCollector  // The address of the new fee collector.
     );
 
     // -------------------- Errors -----------------------------------
@@ -116,6 +129,12 @@ contract MultiTokenBridge is
     /// @dev The mode of accommodation has not been changed.
     error UnchangedAccommodationMode();
 
+    /// @dev The fee oracle has not been changed.
+    error UnchangedFeeOracle();
+
+    /// @dev The fee collector has not been changed.
+    error UnchangedFeeCollector();
+
     // -------------------- Functions -----------------------------------
 
     /**
@@ -158,7 +177,7 @@ contract MultiTokenBridge is
     /**
      * @dev The unchained internal initializer of the upgradable contract.
      *
-     * See {CompoundAgent-initialize}.
+     * See {MultiTokenBridge-initialize}.
      */
     function __MultiTokenBridge_init_unchained() internal onlyInitializing {
         _setRoleAdmin(OWNER_ROLE, OWNER_ROLE);
@@ -206,18 +225,25 @@ contract MultiTokenBridge is
         relocation.amount = amount;
         relocation.status = RelocationStatus.Pending;
 
+        uint256 fee = _defineFee(chainId, token, sender, amount);
+
+        if (fee != 0) {
+            relocation.fee = fee;
+        }
+
         emit RequestRelocation(
             chainId,
             token,
             sender,
             amount,
-            nonce
+            nonce,
+            fee
         );
 
         IERC20Upgradeable(token).safeTransferFrom(
             sender,
             address(this),
-            amount
+            amount + fee
         );
     }
 
@@ -231,8 +257,12 @@ contract MultiTokenBridge is
      * - The caller must be the initiator of the relocation that is being canceled.
      * - The relocation for the provided chain ID and nonce must have the pending or postponed status.
      */
-    function cancelRelocation(uint256 chainId, uint256 nonce) external whenNotPaused onlyRole(BRIDGER_ROLE) {
-        _refuseRelocation(chainId, nonce, RelocationStatus.Canceled);
+    function cancelRelocation(
+        uint256 chainId,
+        uint256 nonce,
+        FeeRefundMode feeRefundMode
+    ) external whenNotPaused onlyRole(BRIDGER_ROLE) {
+        _refuseRelocation(chainId, nonce, RelocationStatus.Canceled, feeRefundMode);
     }
 
     /**
@@ -275,8 +305,12 @@ contract MultiTokenBridge is
      * - The caller must have the {BRIDGER_ROLE} role.
      * - The relocation for the provided chain ID and nonce must have the pending or postponed status.
      */
-    function rejectRelocation(uint256 chainId, uint256 nonce) external whenNotPaused onlyRole(BRIDGER_ROLE) {
-        _refuseRelocation(chainId, nonce, RelocationStatus.Rejected);
+    function rejectRelocation(
+        uint256 chainId,
+        uint256 nonce,
+        FeeRefundMode feeRefundMode
+    ) external whenNotPaused onlyRole(BRIDGER_ROLE) {
+        _refuseRelocation(chainId, nonce, RelocationStatus.Rejected, feeRefundMode);
     }
 
     /**
@@ -289,7 +323,7 @@ contract MultiTokenBridge is
      * - The relocation for the provided chain ID and nonce must have the pending or postponed status.
      */
     function abortRelocation(uint256 chainId, uint256 nonce) external whenNotPaused onlyRole(BRIDGER_ROLE) {
-        _refuseRelocation(chainId, nonce, RelocationStatus.Aborted);
+        _refuseRelocation(chainId, nonce, RelocationStatus.Aborted, FeeRefundMode.Nothing);
     }
 
     /**
@@ -319,6 +353,7 @@ contract MultiTokenBridge is
             nonce
         );
     }
+
     /**
      * @dev See {IMultiTokenBridge-continueRelocation}.
      *
@@ -513,6 +548,52 @@ contract MultiTokenBridge is
     }
 
     /**
+     * @dev Sets the bridge fee oracle contract address.
+     *
+     * Requirements:
+     *
+     * - The caller must have the {OWNER_ROLE} role.
+     * - The new address of the oracle must be different from the current one.
+     *
+     * Emits a {SetFeeOracle} event.
+     *
+     * @param newOracle The address of the new oracle to set.
+     */
+    function setFeeOracle(address newOracle) external onlyRole(OWNER_ROLE) {
+        address oldOracle = _feeOracle;
+        if (oldOracle == newOracle) {
+            revert UnchangedFeeOracle();
+        }
+
+        _feeOracle = newOracle;
+
+        emit SetFeeOracle(oldOracle, newOracle);
+    }
+
+    /**
+     * @dev Sets the address to collect bridge fees.
+     *
+     * Requirements:
+     *
+     * - The caller must have the {OWNER_ROLE} role.
+     * - The new address of the fee collector must be different from the current one.
+     *
+     * Emits a {SetFeeCollector} event.
+     *
+     * @param newCollector The address of the new fee collector to set.
+     */
+    function setFeeCollector(address newCollector) external onlyRole(OWNER_ROLE) {
+        address oldCollector = _feeCollector;
+        if (oldCollector == newCollector) {
+            revert UnchangedFeeCollector();
+        }
+
+        _feeCollector = newCollector;
+
+        emit SetFeeOracle(oldCollector, newCollector);
+    }
+
+    /**
      * @dev See {IMultiTokenBridge-getPendingRelocationCounter}.
      */
     function getPendingRelocationCounter(uint256 chainId) external view returns (uint256) {
@@ -570,6 +651,47 @@ contract MultiTokenBridge is
     }
 
     /**
+     * @dev See {IMultiTokenBridge-feeOracle}.
+     */
+    function feeOracle() external view returns (address) {
+        return _feeOracle;
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-feeCollector}.
+     */
+    function feeCollector() external view returns (address) {
+        return _feeCollector;
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-isFeeTaken}.
+     */
+    function isFeeTaken() external view returns (bool) {
+        return (_feeOracle == address(0) || _feeCollector == address(0));
+    }
+
+    /**
+     * @dev Defines the fee for a relocation.
+     * @param chainId The destination chain ID of the relocation.
+     * @param token The address of the token used for relocation.
+     * @param account The account that requested the relocation.
+     * @param amount The amount of tokens to relocate.
+     */
+    function _defineFee(
+        uint256 chainId,
+        address token,
+        address account,
+        uint256 amount
+    ) internal view returns (uint256 fee) {
+        fee = 0;
+        address feeOracle_ = _feeOracle;
+        if (feeOracle_ != address(0) && _feeCollector != address(0)) {
+            fee = IBridgeFeeOracle(feeOracle_).defineFee(chainId, token, account, amount);
+        }
+    }
+
+    /**
      * @dev Refuses a pending or postponed relocation with setting a new status.
      *
      * if the relocation is not aborted transfers tokens back from the bridge to the account.
@@ -584,7 +706,12 @@ contract MultiTokenBridge is
      * @param chainId The destination chain ID of the relocation to cancel.
      * @param nonce The nonce of the pending relocation to cancel.
      */
-    function _refuseRelocation(uint256 chainId, uint256 nonce, RelocationStatus targetStatus) internal {
+    function _refuseRelocation(
+        uint256 chainId,
+        uint256 nonce,
+        RelocationStatus targetStatus,
+        FeeRefundMode feeRefundMode
+    ) internal {
         Relocation storage storedRelocation = _relocations[chainId][nonce];
         Relocation memory relocation = storedRelocation;
 
@@ -613,7 +740,8 @@ contract MultiTokenBridge is
                     nonce
                 );
             }
-            IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount);
+            uint256 fee = feeRefundMode == FeeRefundMode.Full ? relocation.fee : 0;
+            IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount + fee);
         } else {
             emit AbortRelocation(
                 chainId,
@@ -659,6 +787,10 @@ contract MultiTokenBridge is
                 if (!burningSuccess) {
                     revert TokenBurningFailure();
                 }
+            }
+
+            if (relocation.fee != 0) {
+                IERC20Upgradeable(relocation.token).safeTransfer(_feeCollector, relocation.fee);
             }
         }
     }

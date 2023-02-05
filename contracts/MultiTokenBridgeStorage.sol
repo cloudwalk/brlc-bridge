@@ -30,6 +30,19 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
 }
 
 /**
+ * @title MultiTokenBridge storage version 2
+ * @author CloudWalk Inc.
+ * @dev See terms in the comments of the {IMultiTokenBridge} interface.
+ */
+abstract contract MultiTokenBridgeStorageV2 is IMultiTokenBridgeTypes {
+    /// @dev The address of the oracle contract to define fees.
+    address internal _feeOracle;
+
+    /// @dev The address to collect fees.
+    address internal _feeCollector;
+}
+
+/**
  * @title MultiTokenBridge storage
  * @author CloudWalk Inc.
  * @dev Contains storage variables of the multi token bridge contract.
@@ -40,6 +53,6 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
  * e.g. MultiTokenBridgeStorage<versionNumber>, so finally it would look like
  * "contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV1, MultiTokenBridgeStorageV2".
  */
-abstract contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV1 {
+abstract contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV1, MultiTokenBridgeStorageV2 {
 
 }

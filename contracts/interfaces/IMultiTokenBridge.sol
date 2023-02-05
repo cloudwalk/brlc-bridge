@@ -37,12 +37,19 @@ interface IMultiTokenBridgeTypes {
         Continued    // 7 The relocation has been continued as a new relocation with a new nonce.
     }
 
+    /// @dev Enumeration of fee refund modes.
+    enum FeeRefundMode {
+        Nothing, // 0 No fee is refunded.
+        Full     // 1 The full fee is refunded.
+    }
+
     /// @dev Structure with data of a single relocation operation.
     struct Relocation {
         address token;           // The address of the token used for relocation.
         address account;         // The account that requested the relocation.
         uint256 amount;          // The amount of tokens to relocate.
         RelocationStatus status; // The current status of the relocation.
+        uint256 fee;             // The fee taken from the user for the relocation.
         uint256 oldNonce;        // The nonce of the replaced relocation or zero.
         uint256 newNonce;        // The nonce of the relocation that replaces this one to continue it or zero.
     }
@@ -59,7 +66,7 @@ interface IMultiTokenBridgeTypes {
 /**
  * @title MultiTokenBridge interface
  * @author CloudWalk Inc.
- * @dev The bridge contract interface  that supports  bridging of multiple tokens.
+ * @dev The bridge contract interface that supports bridging of multiple tokens.
  *
  * Terms used in the context of bridge contract operations:
  *
@@ -75,7 +82,8 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
         address indexed token,   // The address of the token used for relocation.
         address indexed account, // The account that requested the relocation.
         uint256 amount,          // The amount of tokens to relocate.
-        uint256 nonce            // The relocation nonce.
+        uint256 nonce,           // The relocation nonce.
+        uint256 fee              // The fee taken for the relocation.
     );
 
     /// @dev Emitted when the relocation is canceled. The fields are the same as for the {RequestRelocation} event.
@@ -197,6 +205,21 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     ) external view returns (Relocation[] memory relocations);
 
     /**
+     * @dev Returns the address of the bridge fee oracle contract.
+     */
+    function feeOracle() external view returns (address);
+
+    /**
+     * @dev Returns the address to collect relocation fees.
+     */
+    function feeCollector() external view returns (address);
+
+    /**
+     * @dev Defines if fee taken for relocations.
+     */
+    function isFeeTaken() external view returns (bool);
+
+    /**
      * @dev Requests a new relocation with transferring tokens from an account to the bridge.
      *
      * The new relocation will be pending until it is processed.
@@ -225,8 +248,9 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
      *
      * @param chainId The destination chain ID of the relocation to cancel.
      * @param nonce The nonce of the pending relocation to cancel.
+     * @param feeRefundMode A mode of the fee refund during the cancellation.
      */
-    function cancelRelocation(uint256 chainId, uint256 nonce) external;
+    function cancelRelocation(uint256 chainId, uint256 nonce, FeeRefundMode feeRefundMode) external;
 
     /**
      * @dev Processes specified count of pending relocations.
@@ -253,8 +277,9 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
      *
      * @param chainId The destination chain ID of the relocation to reject.
      * @param nonce The nonce of the relocation to reject.
+     * @param feeRefundMode A mode of the fee refund during the rejection.
      */
-    function rejectRelocation(uint256 chainId, uint256 nonce) external;
+    function rejectRelocation(uint256 chainId, uint256 nonce, FeeRefundMode feeRefundMode) external;
 
     /**
      * @dev Aborts a pending relocation.
