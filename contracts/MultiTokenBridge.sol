@@ -384,6 +384,10 @@ contract MultiTokenBridge is
 
         oldStoredRelocation.status = RelocationStatus.Continued;
         oldStoredRelocation.newNonce = newNonce;
+        if (oldRelocation.fee != 0) {
+            oldStoredRelocation.fee = 0;
+            newStoredRelocation.fee = oldRelocation.fee;
+        }
 
         emit ContinueRelocation(
             chainId,
@@ -590,7 +594,7 @@ contract MultiTokenBridge is
 
         _feeCollector = newCollector;
 
-        emit SetFeeOracle(oldCollector, newCollector);
+        emit SetFeeCollector(oldCollector, newCollector);
     }
 
     /**
@@ -668,7 +672,7 @@ contract MultiTokenBridge is
      * @dev See {IMultiTokenBridge-isFeeTaken}.
      */
     function isFeeTaken() external view returns (bool) {
-        return (_feeOracle == address(0) || _feeCollector == address(0));
+        return (_feeOracle != address(0) && _feeCollector != address(0));
     }
 
     /**
@@ -703,8 +707,10 @@ contract MultiTokenBridge is
      * Emits one of the following events depending on the target status:
      * {CancelRelocation}, {RejectRelocation}, {AbortRelocation}.
      *
-     * @param chainId The destination chain ID of the relocation to cancel.
-     * @param nonce The nonce of the pending relocation to cancel.
+     * @param chainId The destination chain ID of the relocation to refuse.
+     * @param nonce The nonce of the relocation to refuse.
+     * @param targetStatus A relocation status that must be set during the refusing.
+     * @param feeRefundMode A mode of the fee refund during the refusing.
      */
     function _refuseRelocation(
         uint256 chainId,
@@ -722,13 +728,15 @@ contract MultiTokenBridge is
         storedRelocation.status = targetStatus;
 
         if (targetStatus != RelocationStatus.Aborted) {
+            uint256 refundedFee = feeRefundMode == FeeRefundMode.Full ? relocation.fee : 0;
             if (targetStatus == RelocationStatus.Canceled) {
                 emit CancelRelocation(
                     chainId,
                     relocation.token,
                     relocation.account,
                     relocation.amount,
-                    nonce
+                    nonce,
+                    refundedFee
                 );
 
             } else {
@@ -737,11 +745,19 @@ contract MultiTokenBridge is
                     relocation.token,
                     relocation.account,
                     relocation.amount,
-                    nonce
+                    nonce,
+                    refundedFee
                 );
             }
-            uint256 fee = feeRefundMode == FeeRefundMode.Full ? relocation.fee : 0;
-            IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount + fee);
+            if (refundedFee == 0) {
+                IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount);
+                if (relocation.fee != 0) {
+                    IERC20Upgradeable(relocation.token).safeTransfer(_feeCollector, relocation.fee);
+                }
+            } else {
+                storedRelocation.fee = 0;
+                IERC20Upgradeable(relocation.token).safeTransfer(relocation.account, relocation.amount + refundedFee);
+            }
         } else {
             emit AbortRelocation(
                 chainId,

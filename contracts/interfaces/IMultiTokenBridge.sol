@@ -49,9 +49,9 @@ interface IMultiTokenBridgeTypes {
         address account;         // The account that requested the relocation.
         uint256 amount;          // The amount of tokens to relocate.
         RelocationStatus status; // The current status of the relocation.
-        uint256 fee;             // The fee taken from the user for the relocation.
         uint256 oldNonce;        // The nonce of the replaced relocation or zero.
         uint256 newNonce;        // The nonce of the relocation that replaces this one to continue it or zero.
+        uint256 fee;             // The result fee that was taken from the initiator account for the relocation.
     }
 
     /// @dev Structure with data of a single accommodation operation that matches a relocation in the source chain.
@@ -86,22 +86,24 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
         uint256 fee              // The fee taken for the relocation.
     );
 
-    /// @dev Emitted when the relocation is canceled. The fields are the same as for the {RequestRelocation} event.
+    /// @dev Emitted when the relocation is canceled.
     event CancelRelocation(
-        uint256 indexed chainId,
-        address indexed token,
-        address indexed account,
-        uint256 amount,
-        uint256 nonce
+        uint256 indexed chainId, // See the same field of the {RequestRelocation} event.
+        address indexed token,   // See the same field of the {RequestRelocation} event.
+        address indexed account, // See the same field of the {RequestRelocation} event.
+        uint256 amount,          // See the same field of the {RequestRelocation} event.
+        uint256 nonce,           // See the same field of the {RequestRelocation} event.
+        uint256 refundedFee      // The fee amount that is refunded to the relocation initiator account.
     );
 
-    /// @dev Emitted when the relocation is rejected. The fields are the same as for the {RequestRelocation} event.
+    /// @dev Emitted when the relocation is rejected.
     event RejectRelocation(
-        uint256 indexed chainId,
-        address indexed token,
-        address indexed account,
-        uint256 amount,
-        uint256 nonce
+        uint256 indexed chainId, // See the same field of the {RequestRelocation} event.
+        address indexed token,   // See the same field of the {RequestRelocation} event.
+        address indexed account, // See the same field of the {RequestRelocation} event.
+        uint256 amount,          // See the same field of the {RequestRelocation} event.
+        uint256 nonce,           // See the same field of the {RequestRelocation} event.
+        uint256 refundedFee      // The fee amount that is refunded to the relocation initiator account.
     );
 
     /// @dev Emitted when the relocation is aborted. The fields are the same as for the {RequestRelocation} event.

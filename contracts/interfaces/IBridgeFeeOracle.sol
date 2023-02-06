@@ -10,10 +10,10 @@ pragma solidity 0.8.16;
 interface IBridgeFeeOracle {
     /**
      * @dev Defines a fee for a bridge operation.
-     * @param chainId The ID of a destination chain of the bridge operation.
-     * @param token The address of a token to bridge.
-     * @param account An owner of tokens to bridge.
-     * @param amount An amount of tokens to bridge
+     * @param chainId A destination chain ID of the bridge operation.
+     * @param token The address of a token that involved in the bridge operation.
+     * @param account An account that requested the bridge operation.
+     * @param amount An amount of tokens to transfer with the bridge operation.
      */
     function defineFee(
         uint256 chainId,
