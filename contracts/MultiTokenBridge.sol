@@ -14,6 +14,7 @@ import { MultiTokenBridgeStorage } from "./MultiTokenBridgeStorage.sol";
 import { IMultiTokenBridge } from "./interfaces/IMultiTokenBridge.sol";
 import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
 import { IBridgeFeeOracle } from "./interfaces/IBridgeFeeOracle.sol";
+import { IBridgeGuard } from "./interfaces/IBridgeGuard.sol";
 
 /**
  * @title MultiTokenBridgeUpgradeable contract
@@ -57,14 +58,20 @@ contract MultiTokenBridge is
 
     /// @dev Emitted when the fee oracle is changed.
     event SetFeeOracle(
-        address oldOracle, // The address of the old fee oracle.
-        address newOracle  // The address of the new fee oracle.
+        address oldOracle, // The previous address of the fee oracle.
+        address newOracle  // The new address of the fee oracle.
     );
 
     /// @dev Emitted when the fee collector address is changed.
     event SetFeeCollector(
-        address oldCollector, // The address of the old fee collector.
-        address newCollector  // The address of the new fee collector.
+        address oldCollector, // The previous address of the fee collector.
+        address newCollector  // The new address of the fee collector.
+    );
+
+    /// @dev Emitted when the guard contract address is changed.
+    event SetGuard(
+        address oldGuard, // The previous address of the guard.
+        address newGuard  // The new address of the guard.
     );
 
     // -------------------- Errors -----------------------------------
@@ -129,11 +136,21 @@ contract MultiTokenBridge is
     /// @dev The mode of accommodation has not been changed.
     error UnchangedAccommodationMode();
 
-    /// @dev The fee oracle has not been changed.
+    /// @dev The fee oracle address has not been changed.
     error UnchangedFeeOracle();
 
-    /// @dev The fee collector has not been changed.
+    /// @dev The fee collector address has not been changed.
     error UnchangedFeeCollector();
+
+    /// @dev The bridge guard address has not been changed.
+    error UnchangedGuard();
+
+    /**
+     * @dev The accommodation cannot be done because of a ban from the guard contract.
+     * @param nonce The nonce of the banned accommodation.
+     * @param errorCode The error code from the quard contract.
+     */
+    error AccommodationGuardBan(uint256 nonce, uint256 errorCode);
 
     // -------------------- Functions -----------------------------------
 
@@ -442,6 +459,7 @@ contract MultiTokenBridge is
             }
 
             if (accommodation.status == RelocationStatus.Processed) {
+                _checkAccommodation(chainId, nonce, accommodation);
                 OperationMode mode = _accommodationModes[chainId][accommodation.token];
                 if (mode == OperationMode.BurnOrMint) {
                     bool mintingSuccess = IERC20Bridgeable(accommodation.token).mintForBridging(
@@ -598,6 +616,29 @@ contract MultiTokenBridge is
     }
 
     /**
+     * @dev Sets the bridge guard contract address.
+     *
+     * Requirements:
+     *
+     * - The caller must have the {OWNER_ROLE} role.
+     * - The new address of the guard must be different from the current one.
+     *
+     * Emits a {SetGuard} event.
+     *
+     * @param newGuard The new address of the guard to set.
+     */
+    function setGuard(address newGuard) external onlyRole(OWNER_ROLE) {
+        address oldGuard = _guard;
+        if (oldGuard == newGuard) {
+            revert UnchangedGuard();
+        }
+
+        _guard = newGuard;
+
+        emit SetGuard(oldGuard, newGuard);
+    }
+
+    /**
      * @dev See {IMultiTokenBridge-getPendingRelocationCounter}.
      */
     function getPendingRelocationCounter(uint256 chainId) external view returns (uint256) {
@@ -676,6 +717,13 @@ contract MultiTokenBridge is
     }
 
     /**
+     * @dev See {IMultiTokenBridge-guard}.
+     */
+    function guard() external view returns (address) {
+        return _guard;
+    }
+
+    /**
      * @dev Defines the fee for a relocation.
      * @param chainId The destination chain ID of the relocation.
      * @param token The address of the token used for relocation.
@@ -738,7 +786,6 @@ contract MultiTokenBridge is
                     nonce,
                     refundedFee
                 );
-
             } else {
                 emit RejectRelocation(
                     chainId,
@@ -820,6 +867,28 @@ contract MultiTokenBridge is
             return abi.decode(result, (bool));
         } else {
             return false;
+        }
+    }
+
+    /**
+     * @dev Checks that an accommodation is safe.
+     * @param chainId The ID of the source chain of the accommodation.
+     * @param nonce The nonce of the accommodation.
+     * @param accommodation The data of the accommodation.
+     */
+    function _checkAccommodation(uint256 chainId, uint256 nonce, Accommodation calldata accommodation) internal {
+        address guard_ = _guard;
+        if (guard_ == address(0)) {
+            return;
+        }
+        uint256 errorCode = IBridgeGuard(guard_).registerAndCheckAccommodation(
+            chainId,
+            accommodation.token,
+            accommodation.account,
+            accommodation.amount
+        );
+        if (errorCode != 0) {
+            revert AccommodationGuardBan(nonce, errorCode);
         }
     }
 }

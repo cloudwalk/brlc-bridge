@@ -180,6 +180,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const FAKE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001";
   const FAKE_FEE_ORACLE_ADDRESS = "0x0000000000000000000000000000000000000002";
   const FAKE_FEE_COLLECTOR_ADDRESS = "0x0000000000000000000000000000000000000003";
+  const FAKE_GUARD_ADDRESS = "0x0000000000000000000000000000000000000004";
   const CHAIN_ID = 123;
 
   const EVENT_NAME_ABORT_RELOCATION = "AbortRelocation";
@@ -191,6 +192,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const EVENT_NAME_RELOCATE = "Relocate";
   const EVENT_NAME_REQUEST_RELOCATION = "RequestRelocation";
   const EVENT_NAME_SET_ACCOMMODATION_MODE = "SetAccommodationMode";
+  const EVENT_NAME_SET_GUARD = "SetGuard";
   const EVENT_NAME_SET_FEE_COLLECTOR = "SetFeeCollector";
   const EVENT_NAME_SET_FEE_ORACLE = "SetFeeOracle";
   const EVENT_NAME_SET_RELOCATION_MODE = "SetRelocationMode";
@@ -212,12 +214,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED = "UnsupportedAccommodation";
   const REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS = "ZeroAccommodationAccount";
   const REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO = "ZeroAccommodationAmount";
+  const REVERT_ERROR_IF_ACCOMMODATION_GUARD_BAN = "AccommodationGuardBan";
 
   const REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED = "TokenMintingFailure";
   const REVERT_ERROR_IF_BURNING_OF_TOKENS_FAILED = "TokenBurningFailure";
 
   const REVERT_ERROR_IF_ACCOMMODATION_MODE_IS_IMMUTABLE = "AccommodationModeIsImmutable";
   const REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedAccommodationMode";
+  const REVERT_ERROR_IF_GUARD_HAS_NOT_BEEN_CHANGED = "UnchangedGuard";
   const REVERT_ERROR_IF_FEE_COLLECTOR_HAS_NOT_BEEN_CHANGED = "UnchangedFeeCollector";
   const REVERT_ERROR_IF_FEE_ORACLE_HAS_NOT_BEEN_CHANGED = "UnchangedFeeOracle";
   const REVERT_ERROR_IF_RELOCATION_MODE_IS_IMMUTABLE = "RelocationModeIsImmutable";
@@ -232,11 +236,13 @@ describe("Contract 'MultiTokenBridge'", async () => {
   let multiTokenBridgeFactory: ContractFactory;
   let tokenMockFactory: ContractFactory;
   let feeOracleMockFactory: ContractFactory;
+  let guardMockFactory: ContractFactory;
 
   let multiTokenBridge: Contract;
   let tokenMock1: Contract;
   let tokenMock2: Contract;
   let feeOracleMock: Contract;
+  let guardMock: Contract;
 
   let deployer: SignerWithAddress;
   let bridger: SignerWithAddress;
@@ -250,6 +256,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
     multiTokenBridgeFactory = await ethers.getContractFactory("MultiTokenBridge");
     tokenMockFactory = await ethers.getContractFactory("ERC20UpgradeableMock");
     feeOracleMockFactory = await ethers.getContractFactory("BridgeFeeOracleMock");
+    guardMockFactory = await ethers.getContractFactory("BridgeGuardMock");
 
     [deployer, bridger, user1, user2, feeCollector] = await ethers.getSigners();
   });
@@ -277,45 +284,55 @@ describe("Contract 'MultiTokenBridge'", async () => {
     return { feeOracleMock };
   }
 
-  async function deployAllContracts(): Promise<{
+  async function deployGuardMock(): Promise<{ guardMock: Contract }> {
+    const guardMock: Contract = await guardMockFactory.deploy();
+    await guardMock.deployed();
+
+    return { guardMock };
+  }
+
+  async function deployBridgeAndTokenMockContracts(): Promise<{
     multiTokenBridge: Contract,
     tokenMock1: Contract,
     tokenMock2: Contract,
-    feeOracleMock: Contract
   }> {
     const { multiTokenBridge } = await deployMultiTokenBridge();
     const { tokenMock: tokenMock1 } = await deployTokenMock(1);
     const { tokenMock: tokenMock2 } = await deployTokenMock(2);
-    const { feeOracleMock } = await deployFeeOracleMock();
 
-    return { multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock };
+    return { multiTokenBridge, tokenMock1, tokenMock2 };
   }
 
   async function deployAndConfigureAllContracts(): Promise<{
     multiTokenBridge: Contract,
     tokenMock1: Contract,
     tokenMock2: Contract,
-    feeOracleMock: Contract
+    feeOracleMock: Contract,
+    guardMock: Contract
   }> {
     const { multiTokenBridge } = await deployMultiTokenBridge();
     const { tokenMock: tokenMock1 } = await deployTokenMock(1);
     const { tokenMock: tokenMock2 } = await deployTokenMock(2);
     const { feeOracleMock } = await deployFeeOracleMock();
+    const { guardMock } = await deployGuardMock();
 
     await proveTx(multiTokenBridge.grantRole(BRIDGER_ROLE, bridger.address));
     await proveTx(multiTokenBridge.setFeeOracle(feeOracleMock.address));
 
-    return { multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock };
+    return { multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock, guardMock };
   }
 
   async function beforeEachConfigurationTest() {
     operationMode = OperationMode.Unsupported;
-    ({ multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock } = await setUpFixture(deployAllContracts));
+    ({ multiTokenBridge, tokenMock1, tokenMock2 } = await setUpFixture(deployBridgeAndTokenMockContracts));
   }
 
   async function beforeEachNonConfigurationTest(targetOperationMode: OperationMode) {
     operationMode = targetOperationMode;
-    ({ multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock } = await setUpFixture(deployAndConfigureAllContracts));
+    (
+      { multiTokenBridge, tokenMock1, tokenMock2, feeOracleMock, guardMock } =
+        await setUpFixture(deployAndConfigureAllContracts)
+    );
   }
 
   async function setUpContractsForRelocations(relocations: TestTokenRelocation[]) {
@@ -545,7 +562,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       const expectedBalance: number = countNumberArrayTotal(
         relocations.map(
           function (relocation: TestTokenRelocation): number {
-            if (relocation.token == expectedToken && !!relocation.requested){
+            if (relocation.token == expectedToken && !!relocation.requested) {
               if (relocation.status == RelocationStatus.Processed && operationMode === OperationMode.LockOrTransfer) {
                 return relocation.amount;
               } else if (
@@ -621,7 +638,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   }
 
   async function prepareSingleRelocationRequesting(
-    props: {isFeeTaken: boolean}
+    props: { isFeeTaken: boolean }
   ): Promise<{ relocation: TestTokenRelocation }> {
     const relocation: TestTokenRelocation = {
       chainId: CHAIN_ID,
@@ -641,7 +658,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   }
 
   async function prepareSingleRelocationExecution(
-    props: {isFeeTaken: boolean}
+    props: { isFeeTaken: boolean }
   ): Promise<{ relocation: TestTokenRelocation }> {
     const { relocation } = await prepareSingleRelocationRequesting(props);
     await requestRelocations([relocation]);
@@ -712,6 +729,9 @@ describe("Contract 'MultiTokenBridge'", async () => {
       expect(await multiTokenBridge.feeOracle()).to.equal(ethers.constants.AddressZero);
       expect(await multiTokenBridge.feeCollector()).to.equal(ethers.constants.AddressZero);
       expect(await multiTokenBridge.isFeeTaken()).to.equal(false);
+
+      // Guard related settings
+      expect(await multiTokenBridge.guard()).to.equal(ethers.constants.AddressZero);
     });
 
     it("Is reverted if it is called a second time", async () => {
@@ -981,7 +1001,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.be.revertedWith(createRevertMessageDueToMissingRole(user1.address, OWNER_ROLE));
       });
 
-      it("Is reverted if the call does not changed the fee oracle", async () => {
+      it("Is reverted if the call does not changed the fee oracle address", async () => {
         await beforeEachConfigurationTest();
         await expect(
           multiTokenBridge.setFeeOracle(ethers.constants.AddressZero)
@@ -1026,7 +1046,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.be.revertedWith(createRevertMessageDueToMissingRole(user1.address, OWNER_ROLE));
       });
 
-      it("Is reverted if the call does not changed the fee collector", async () => {
+      it("Is reverted if the call does not changed the fee collector address", async () => {
         await beforeEachConfigurationTest();
         await expect(
           multiTokenBridge.setFeeCollector(ethers.constants.AddressZero)
@@ -1038,10 +1058,55 @@ describe("Contract 'MultiTokenBridge'", async () => {
     });
   });
 
+  describe("Function 'setGuard()'", async () => {
+    it("Executes as expected and emits the correct events in different cases", async () => {
+      await beforeEachConfigurationTest();
+
+      await expect(
+        multiTokenBridge.setGuard(FAKE_GUARD_ADDRESS)
+      ).to.emit(
+        multiTokenBridge,
+        EVENT_NAME_SET_GUARD
+      ).withArgs(
+        ethers.constants.AddressZero,
+        FAKE_GUARD_ADDRESS
+      );
+      expect(await multiTokenBridge.guard()).to.equal(FAKE_GUARD_ADDRESS);
+
+      await expect(
+        multiTokenBridge.setGuard(ethers.constants.AddressZero)
+      ).to.emit(
+        multiTokenBridge,
+        EVENT_NAME_SET_GUARD
+      ).withArgs(
+        FAKE_GUARD_ADDRESS,
+        ethers.constants.AddressZero,
+      );
+      expect(await multiTokenBridge.guard()).to.equal(ethers.constants.AddressZero);
+    });
+
+    it("Is reverted if the caller does not have the owner role", async () => {
+      await beforeEachConfigurationTest();
+      await expect(
+        multiTokenBridge.connect(user1).setGuard(FAKE_GUARD_ADDRESS)
+      ).to.be.revertedWith(createRevertMessageDueToMissingRole(user1.address, OWNER_ROLE));
+    });
+
+    it("Is reverted if the call does not changed the guard address", async () => {
+      await beforeEachConfigurationTest();
+      await expect(
+        multiTokenBridge.setGuard(ethers.constants.AddressZero)
+      ).to.be.revertedWithCustomError(
+        multiTokenBridge,
+        REVERT_ERROR_IF_GUARD_HAS_NOT_BEEN_CHANGED
+      );
+    });
+  });
+
   describe("Interactions related to relocations in the BurnOrMint operation mode", async () => {
     describe("Function 'requestRelocation()'", async () => {
       async function beforeRequestingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationRequesting(props);
@@ -1077,21 +1142,21 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Transfers tokens as expected, emits the correct event, changes the state properly if", async () => {
         it("Fee is taken", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: true });
           expect(await multiTokenBridge.isFeeTaken()).to.equal(true);
           await checkRequestingRelocation(relocation);
         });
 
         it("No fee is taken", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           expect(await multiTokenBridge.isFeeTaken()).to.equal(false);
           await checkRequestingRelocation(relocation);
         });
-      })
+      });
 
       describe("Is reverted if", async () => {
         it("The contract is paused", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           await pauseMultiTokenBridge();
 
           await expect(
@@ -1104,7 +1169,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The token address is zero", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(relocation.account).requestRelocation(
               relocation.chainId,
@@ -1115,7 +1180,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The token amount of the relocation is zero", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(relocation.account).requestRelocation(
               relocation.chainId,
@@ -1126,7 +1191,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The target chain is unsupported for relocations", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(relocation.account).requestRelocation(
               relocation.chainId + 1,
@@ -1137,7 +1202,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The token is unsupported for relocations", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(relocation.account).requestRelocation(
               relocation.chainId,
@@ -1148,7 +1213,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The user has not enough token balance for the relocation amount", async () => {
-          const { relocation } = await beforeRequestingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRequestingRelocation({ isFeeTaken: false });
           const excessTokenAmount: number = relocation.amount + 1;
 
           await expect(
@@ -1164,7 +1229,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
     describe("Function 'cancelRelocation()'", async () => {
       async function beforeCancelingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution(props);
@@ -1174,7 +1239,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         const totalAmount = relocation.amount + (relocation.fee || 0);
         const collectedFee = (relocation.fee || 0) - (relocation.refundedFee || 0);
         const returnedAmount = relocation.amount + (relocation.refundedFee || 0);
-          await expect(
+        await expect(
           multiTokenBridge.connect(bridger).cancelRelocation(
             relocation.chainId,
             relocation.nonce,
@@ -1202,14 +1267,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation status is", async () => {
         it("'Pending', and the fee was taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeCancelingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeCancelingRelocation({ isFeeTaken: true });
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = relocation.fee;
           await checkCancelingRelocation(relocation);
         });
 
         it("'Postponed', and the fee was taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeCancelingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeCancelingRelocation({ isFeeTaken: true });
           await postponeRelocations([relocation]);
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = relocation.fee;
@@ -1217,14 +1282,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("'Pending', and the fee was taken, and the fee refund mode is 'Nothing'", async () => {
-          const { relocation } = await beforeCancelingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeCancelingRelocation({ isFeeTaken: true });
           relocation.feeRefundMode = FeeRefundMode.Nothing;
           relocation.refundedFee = 0;
           await checkCancelingRelocation(relocation);
         });
 
         it("'Pending', and the fee was not taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeCancelingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeCancelingRelocation({ isFeeTaken: false });
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = 0;
           await checkCancelingRelocation(relocation);
@@ -1254,7 +1319,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
     describe("Function 'rejectRelocation()'", async () => {
       async function beforeRejectingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution(props);
@@ -1292,14 +1357,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation status is", async () => {
         it("'Pending', and the fee was taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeRejectingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeRejectingRelocation({ isFeeTaken: true });
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = relocation.fee;
           await checkRejectingRelocation(relocation);
         });
 
         it("'Postponed', and the fee was taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeRejectingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeRejectingRelocation({ isFeeTaken: true });
           await postponeRelocations([relocation]);
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = relocation.fee;
@@ -1307,14 +1372,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("'Pending', and the fee was taken, and the fee refund mode is 'Nothing'", async () => {
-          const { relocation } = await beforeRejectingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeRejectingRelocation({ isFeeTaken: true });
           relocation.feeRefundMode = FeeRefundMode.Nothing;
           relocation.refundedFee = 0;
           await checkRejectingRelocation(relocation);
         });
 
         it("'Pending', and the fee was not taken, and the fee refund mode is 'Full'", async () => {
-          const { relocation } = await beforeRejectingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeRejectingRelocation({ isFeeTaken: false });
           relocation.feeRefundMode = FeeRefundMode.Full;
           relocation.refundedFee = 0;
           await checkRejectingRelocation(relocation);
@@ -1344,7 +1409,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
     describe("Function 'abortRelocation()'", async () => {
       async function beforeAbortingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution(props);
@@ -1374,18 +1439,18 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation status is", async () => {
         it("'Pending', and the fee was taken", async () => {
-          const { relocation } = await beforeAbortingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeAbortingRelocation({ isFeeTaken: true });
           await checkAbortingRelocation(relocation);
         });
 
         it("'Postponed', and the fee was taken", async () => {
-          const { relocation } = await beforeAbortingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeAbortingRelocation({ isFeeTaken: true });
           await postponeRelocations([relocation]);
           await checkAbortingRelocation(relocation);
         });
 
         it("'Pending', and the fee was not taken", async () => {
-          const { relocation } = await beforeAbortingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeAbortingRelocation({ isFeeTaken: false });
           await checkAbortingRelocation(relocation);
         });
       });
@@ -1413,7 +1478,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
     describe("Function 'postponeRelocation()'", async () => {
       async function beforePostponingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution(props);
@@ -1442,15 +1507,15 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation is pending and", async () => {
         it("The fee was taken", async () => {
-          const { relocation } = await beforePostponingRelocation({isFeeTaken: true});
+          const { relocation } = await beforePostponingRelocation({ isFeeTaken: true });
           await checkPostponingRelocation(relocation);
         });
 
         it("The fee was not taken", async () => {
-          const { relocation } = await beforePostponingRelocation({isFeeTaken: false});
+          const { relocation } = await beforePostponingRelocation({ isFeeTaken: false });
           await checkPostponingRelocation(relocation);
         });
-      })
+      });
 
       describe("Is reverted if", async () => {
         it("The caller does not have the bridger role", async () => {
@@ -1475,12 +1540,12 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
     describe("Function 'continueRelocation()'", async () => {
       async function beforeContinuingRelocation(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-        const {relocation} = await prepareSingleRelocationExecution(props);
+        const { relocation } = await prepareSingleRelocationExecution(props);
         await postponeRelocations([relocation]);
-        return {relocation}
+        return { relocation };
       }
 
       async function checkContinuingRelocation(oldRelocation: TestTokenRelocation) {
@@ -1508,15 +1573,15 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if", async () => {
         it("The fee was taken", async () => {
-          const { relocation } = await beforeContinuingRelocation({isFeeTaken: true});
+          const { relocation } = await beforeContinuingRelocation({ isFeeTaken: true });
           await checkContinuingRelocation(relocation);
         });
 
         it("The fee was not taken", async () => {
-          const { relocation } = await beforeContinuingRelocation({isFeeTaken: false});
+          const { relocation } = await beforeContinuingRelocation({ isFeeTaken: false });
           await checkContinuingRelocation(relocation);
         });
-      })
+      });
 
       describe("Is reverted if", async () => {
         it("Is reverted if the caller does not have the bridger role", async () => {
@@ -1543,14 +1608,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
       const relocationCount = 1;
 
       async function beforeExecutionOfRelocate(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
         return prepareSingleRelocationExecution(props);
       }
 
       async function checkExecutionIfRelocationIsPending(relocation: TestTokenRelocation) {
-        const totalAmount = relocation.amount +  (relocation.fee || 0);
+        const totalAmount = relocation.amount + (relocation.fee || 0);
         await expect(
           multiTokenBridge.connect(bridger).relocate(relocation.chainId, relocationCount)
         ).to.changeTokenBalances(
@@ -1591,49 +1656,49 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation is pending and", async () => {
         it("The fee was taken", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: true});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: true });
           await checkExecutionIfRelocationIsPending(relocation);
         });
 
         it("The fee was not taken", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await checkExecutionIfRelocationIsPending(relocation);
         });
-      })
+      });
 
       describe("Burns no tokens, emits no events if the relocation status is", async () => {
         it("'Canceled'", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await cancelRelocations([relocation]);
           await checkExecutionIfRelocationIsNotPending([relocation]);
         });
 
         it("'Rejected'", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await rejectRelocations([relocation]);
           await checkExecutionIfRelocationIsNotPending([relocation]);
         });
 
         it("'Aborted'", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await abortRelocations([relocation]);
           await checkExecutionIfRelocationIsNotPending([relocation]);
         });
 
         it("'Postponed'", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await postponeRelocations([relocation]);
           await checkExecutionIfRelocationIsNotPending([relocation]);
         });
 
         it("'Continued'", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await postponeRelocations([relocation]);
           await continueRelocations([relocation]);
           const newRelocation = treatRelocationAsLastOneBeforeContinuing(relocation);
           await checkExecutionIfRelocationIsNotPending([relocation, newRelocation]);
         });
-      })
+      });
 
       describe("Is reverted if", async () => {
         it("The contract is paused", async () => {
@@ -1653,28 +1718,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
         });
 
         it("The relocation count is zero", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(bridger).relocate(relocation.chainId, 0)
           ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_COUNT_IS_ZERO);
         });
 
         it("The relocation count exceeds the number of pending relocations", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await expect(
             multiTokenBridge.connect(bridger).relocate(relocation.chainId, relocationCount + 1)
           ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_LACK_OF_PENDING_RELOCATIONS);
         });
 
         it("Burning of tokens fails", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await proveTx(tokenMock1.disableBurningForBridging());
 
           await expect(
             multiTokenBridge.connect(bridger).relocate(relocation.chainId, relocationCount)
           ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_BURNING_OF_TOKENS_FAILED);
         });
-      })
+      });
     });
 
     describe("Complex scenario with a single relocation", async () => {
@@ -1740,13 +1805,13 @@ describe("Contract 'MultiTokenBridge'", async () => {
       describe("All status changing functions fail if a relocation with the provided nonce", async () => {
         it("Does not exist", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationRequesting({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationRequesting({ isFeeTaken: false });
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
         });
 
         it("Is already processed", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
           await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
           relocation.status = RelocationStatus.Processed;
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
@@ -1754,28 +1819,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
         it("Is canceled", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
           await cancelRelocations([relocation]);
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
         });
 
         it("Is rejected", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
           await rejectRelocations([relocation]);
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
         });
 
         it("Is aborted", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
           await abortRelocations([relocation]);
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
         });
 
         it("Is continued", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
           await postponeRelocations([relocation]);
           await continueRelocations([relocation]);
           await checkAllRelocationStatusChangingFunctionsFailure(relocation);
@@ -1785,7 +1850,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       describe("Several postponements and continuations", async () => {
         it("Are executed as expected", async () => {
           await beforeEachNonConfigurationTest(OperationMode.BurnOrMint);
-          const { relocation } = await prepareSingleRelocationExecution({isFeeTaken: false});
+          const { relocation } = await prepareSingleRelocationExecution({ isFeeTaken: false });
 
           await postponeRelocations([relocation]);
           await checkBridgeState([relocation]);
@@ -1954,7 +2019,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       const relocationCount = 1;
 
       async function beforeExecutionOfRelocate(
-        props: {isFeeTaken: boolean}
+        props: { isFeeTaken: boolean }
       ): Promise<{ relocation: TestTokenRelocation }> {
         await beforeEachNonConfigurationTest(OperationMode.LockOrTransfer);
         return prepareSingleRelocationExecution(props);
@@ -1984,15 +2049,15 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       describe("Executes as expected and emits the correct event if the relocation is pending and", async () => {
         it("The fee was taken", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: true});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: true });
           await checkExecutionIfRelocationIsPending(relocation);
         });
 
         it("The fee was not taken", async () => {
-          const { relocation } = await beforeExecutionOfRelocate({isFeeTaken: false});
+          const { relocation } = await beforeExecutionOfRelocate({ isFeeTaken: false });
           await checkExecutionIfRelocationIsPending(relocation);
         });
-      })
+      });
     });
   });
 
@@ -2168,6 +2233,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
             accommodations
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED);
+      });
+
+      it("Is reverted if the guard contract returns a non-zero error code", async () => {
+        const { accommodations, firstNonce } = await beforeExecutionOfAccommodate();
+        const callCounterLimit = accommodations.length - 1;
+        const errorCode = 12345;
+        await proveTx(guardMock.configure(callCounterLimit, errorCode));
+        await proveTx(multiTokenBridge.setGuard(guardMock.address));
+
+        await expect(
+          multiTokenBridge.connect(bridger).accommodate(
+            CHAIN_ID,
+            firstNonce,
+            accommodations
+          )
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_ACCOMMODATION_GUARD_BAN
+        ).withArgs(
+          callCounterLimit,
+          errorCode
+        );
       });
     });
   });

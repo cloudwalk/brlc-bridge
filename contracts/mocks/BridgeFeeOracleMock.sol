@@ -11,7 +11,7 @@ import { IBridgeFeeOracle } from "../interfaces/IBridgeFeeOracle.sol";
  */
 contract BridgeFeeOracleMock is IBridgeFeeOracle {
     /**
-     * @dev See {ConstantBridgeFeeOracle-feeOracle}.
+     * @dev See {IBridgeFeeOracle-feeOracle}.
      *
      * Always returns 0.1 of the `amount`.
      */

@@ -222,6 +222,11 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     function isFeeTaken() external view returns (bool);
 
     /**
+     * @dev Returns the address of the bridge guard contract.
+     */
+    function guard() external view returns (address);
+
+    /**
      * @dev Requests a new relocation with transferring tokens from an account to the bridge.
      *
      * The new relocation will be pending until it is processed.

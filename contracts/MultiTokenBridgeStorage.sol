@@ -40,6 +40,9 @@ abstract contract MultiTokenBridgeStorageV2 is IMultiTokenBridgeTypes {
 
     /// @dev The address to collect fees.
     address internal _feeCollector;
+
+    /// @dev The address of the guard contract to protect the bridge from insecure operations.
+    address internal _guard;
 }
 
 /**
