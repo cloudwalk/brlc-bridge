@@ -228,23 +228,6 @@ contract MultiTokenBridge is
     }
 
     /**
-     * @dev See {IMultiTokenBridge-cancelRelocation}.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     * - The caller must be the initiator of the relocation that is being canceled.
-     * - The relocation for the provided chain ID and nonce must have the pending status.
-     */
-    function cancelRelocation(uint256 chainId, uint256 nonce) external whenNotPaused {
-        if (_relocations[chainId][nonce].account != _msgSender()) {
-            revert UnauthorizedCancellation();
-        }
-
-        _cancelRelocation(chainId, nonce);
-    }
-
-    /**
      * @dev See {IMultiTokenBridge-cancelRelocations}.
      *
      * Requirements:
