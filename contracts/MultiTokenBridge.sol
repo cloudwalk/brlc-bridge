@@ -3,6 +3,7 @@
 pragma solidity 0.8.16;
 
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import { IERC20MetadataUpgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import { SafeERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
@@ -36,6 +37,9 @@ contract MultiTokenBridge is
     /// @dev The role of bridger that is allowed to execute bridging operations.
     bytes32 public constant BRIDGER_ROLE = keccak256("BRIDGER_ROLE");
 
+    /// @dev The minimum amount of tokens required for a single relocation operation.
+    uint256 public constant MINIMUM_RELOCATION_AMOUNT = 50;
+
     // -------------------- Events -----------------------------------
 
     /// @dev Emitted when the mode of relocation is changed.
@@ -64,6 +68,9 @@ contract MultiTokenBridge is
 
     /// @dev The zero count of relocations has been passed when processing pending relocations.
     error ZeroRelocationCount();
+
+    /// @dev The amount of tokens passed when requesting a relocation is insufficient for processing.
+    error InsufficientRelocationAmount();
 
     /// @dev The count of relocations to process is greater than the number of pending relocations.
     error LackOfPendingRelocations();
@@ -193,6 +200,9 @@ contract MultiTokenBridge is
         }
         if (amount == 0) {
             revert ZeroRelocationAmount();
+        }
+        if (MINIMUM_RELOCATION_AMOUNT * IERC20MetadataUpgradeable(token).decimals() > amount) {
+            revert InsufficientRelocationAmount();
         }
 
         OperationMode mode = _relocationModes[chainId][token];
