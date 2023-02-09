@@ -135,7 +135,9 @@ async function setUpFixture(func: any) {
 }
 
 describe("Contract 'MultiTokenBridge'", async () => {
-  const MINIMUM_RELOCATION_AMOUNT = 50;
+  const MINIMUM_RELOCATION_AMOUNT_CONST = 50;
+  const TOKEN_MOCK_DECIMALS = 1;
+  const MINIMUM_RELOCATION_AMOUNT = Math.floor(MINIMUM_RELOCATION_AMOUNT_CONST * 10 ** TOKEN_MOCK_DECIMALS);
   const FAKE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001";
   const CHAIN_ID = 123;
 
@@ -488,7 +490,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       chainId: CHAIN_ID,
       token: tokenMock1,
       account: user1,
-      amount: 456,
+      amount: MINIMUM_RELOCATION_AMOUNT,
       nonce: 1,
     };
     await setUpContractsForRelocations([relocation]);
@@ -518,7 +520,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock1,
         account: user1,
-        amount: 234,
+        amount: MINIMUM_RELOCATION_AMOUNT,
         nonce: 1,
         status: RelocationStatus.Canceled
       },
@@ -526,7 +528,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock1,
         account: user2,
-        amount: 345,
+        amount: MINIMUM_RELOCATION_AMOUNT + 1,
         nonce: 2,
         status: RelocationStatus.Processed
       },
@@ -534,7 +536,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user1,
-        amount: 456,
+        amount: MINIMUM_RELOCATION_AMOUNT + 2,
         nonce: 3,
         status: RelocationStatus.Aborted
       },
@@ -542,7 +544,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 567,
+        amount: MINIMUM_RELOCATION_AMOUNT + 3,
         nonce: 4,
         status: RelocationStatus.Processed
       },
@@ -550,7 +552,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 678,
+        amount: MINIMUM_RELOCATION_AMOUNT + 4,
         nonce: 5,
         status: RelocationStatus.Revoked
       },
@@ -558,7 +560,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 789,
+        amount: MINIMUM_RELOCATION_AMOUNT + 5,
         nonce: 6,
         status: RelocationStatus.Pending
       },
@@ -609,7 +611,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       expect(await multiTokenBridge.paused()).to.equal(false);
 
       // Other constants and settings
-      expect(await multiTokenBridge.MINIMUM_RELOCATION_AMOUNT()).to.equal(MINIMUM_RELOCATION_AMOUNT);
+      expect(await multiTokenBridge.MINIMUM_RELOCATION_AMOUNT()).to.equal(MINIMUM_RELOCATION_AMOUNT_CONST);
     });
 
     it("The external initializer is reverted if it is called a second time", async () => {
@@ -976,14 +978,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: user1,
-            amount: 3456,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user2,
-            amount: 5678,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
         ];
@@ -1444,28 +1446,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: user1,
-            amount: 234,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user1,
-            amount: 345,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user2,
-            amount: 456,
+            amount: MINIMUM_RELOCATION_AMOUNT + 2,
             nonce: 3,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: deployer,
-            amount: 567,
+            amount: MINIMUM_RELOCATION_AMOUNT + 3,
             nonce: 4,
           },
         ];
@@ -1564,28 +1566,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: chainId1,
             token: tokenMock2,
             account: user1,
-            amount: 345,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: chainId1,
             token: tokenMock1,
             account: user1,
-            amount: 456,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
           {
             chainId: chainId2,
             token: tokenMock1,
             account: user2,
-            amount: 567,
+            amount: MINIMUM_RELOCATION_AMOUNT + 2,
             nonce: 1,
           },
           {
             chainId: chainId2,
             token: tokenMock2,
             account: deployer,
-            amount: 678,
+            amount: MINIMUM_RELOCATION_AMOUNT + 3,
             nonce: 2,
           },
         ];
