@@ -135,6 +135,9 @@ async function setUpFixture(func: any) {
 }
 
 describe("Contract 'MultiTokenBridge'", async () => {
+  const MINIMUM_RELOCATION_AMOUNT_CONST = 50;
+  const TOKEN_MOCK_DECIMALS = 1;
+  const MINIMUM_RELOCATION_AMOUNT = Math.floor(MINIMUM_RELOCATION_AMOUNT_CONST * 10 ** TOKEN_MOCK_DECIMALS);
   const FAKE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001";
   const CHAIN_ID = 123;
 
@@ -156,7 +159,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED = "UnsupportedRelocation";
   const REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS = "InappropriateRelocationStatus";
   const REVERT_ERROR_IF_CANCELLATION_ARRAY_OF_NONCES_IS_EMPTY = "EmptyCancellationNoncesArray";
-  const REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION = "UnauthorizedCancellation";
+  const REVERT_ERROR_IF_INSUFFICIENT_RELOCATION_AMOUNT = "InsufficientRelocationAmount";
 
   const REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO = "ZeroAccommodationNonce";
   const REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH = "AccommodationNonceMismatch";
@@ -277,11 +280,20 @@ describe("Contract 'MultiTokenBridge'", async () => {
   }
 
   async function cancelRelocations(relocations: TestTokenRelocation[]) {
-    for (const relocation of relocations) {
-      await proveTx(
-        multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-      );
+    const noncesPerChainId: Map<number, number[]> = new Map();
+    relocations.forEach(relocation => {
+      const chainId = relocation.chainId;
+      const nonces: number[] = noncesPerChainId.get(chainId) || [];
+      nonces.push(relocation.nonce);
+      noncesPerChainId.set(chainId, nonces);
       relocation.status = RelocationStatus.Canceled;
+    });
+    for (const chainId of noncesPerChainId.keys()) {
+      const nonces: number[] | undefined = noncesPerChainId.get(chainId);
+      if (!nonces) {
+        continue;
+      }
+      await proveTx(multiTokenBridge.connect(bridger).cancelRelocations(chainId, nonces));
     }
   }
 
@@ -478,7 +490,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
       chainId: CHAIN_ID,
       token: tokenMock1,
       account: user1,
-      amount: 456,
+      amount: MINIMUM_RELOCATION_AMOUNT,
       nonce: 1,
     };
     await setUpContractsForRelocations([relocation]);
@@ -508,7 +520,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock1,
         account: user1,
-        amount: 234,
+        amount: MINIMUM_RELOCATION_AMOUNT,
         nonce: 1,
         status: RelocationStatus.Canceled
       },
@@ -516,7 +528,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock1,
         account: user2,
-        amount: 345,
+        amount: MINIMUM_RELOCATION_AMOUNT + 1,
         nonce: 2,
         status: RelocationStatus.Processed
       },
@@ -524,7 +536,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user1,
-        amount: 456,
+        amount: MINIMUM_RELOCATION_AMOUNT + 2,
         nonce: 3,
         status: RelocationStatus.Aborted
       },
@@ -532,7 +544,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 567,
+        amount: MINIMUM_RELOCATION_AMOUNT + 3,
         nonce: 4,
         status: RelocationStatus.Processed
       },
@@ -540,7 +552,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 678,
+        amount: MINIMUM_RELOCATION_AMOUNT + 4,
         nonce: 5,
         status: RelocationStatus.Revoked
       },
@@ -548,7 +560,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         chainId: CHAIN_ID,
         token: tokenMock2,
         account: user2,
-        amount: 789,
+        amount: MINIMUM_RELOCATION_AMOUNT + 5,
         nonce: 6,
         status: RelocationStatus.Pending
       },
@@ -597,6 +609,9 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       // The initial contract state is unpaused
       expect(await multiTokenBridge.paused()).to.equal(false);
+
+      // Other constants and settings
+      expect(await multiTokenBridge.MINIMUM_RELOCATION_AMOUNT()).to.equal(MINIMUM_RELOCATION_AMOUNT_CONST);
     });
 
     it("The external initializer is reverted if it is called a second time", async () => {
@@ -904,6 +919,17 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_AMOUNT_IS_ZERO);
       });
 
+      it("Is reverted if the token amount of the relocation is less than minimum allowed one", async () => {
+        const { relocation } = await beforeExecutionOfRequestRelocation();
+        await expect(
+          multiTokenBridge.connect(relocation.account).requestRelocation(
+            relocation.chainId,
+            relocation.token.address,
+            MINIMUM_RELOCATION_AMOUNT - 1
+          )
+        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_INSUFFICIENT_RELOCATION_AMOUNT);
+      });
+
       it("Is reverted if the target chain is unsupported for relocations", async () => {
         const { relocation } = await beforeExecutionOfRequestRelocation();
         await expect(
@@ -920,7 +946,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         await expect(
           multiTokenBridge.connect(relocation.account).requestRelocation(
             relocation.chainId,
-            FAKE_TOKEN_ADDRESS,
+            tokenMock2.address,
             relocation.amount
           )
         ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_RELOCATION_IS_UNSUPPORTED);
@@ -940,111 +966,6 @@ describe("Contract 'MultiTokenBridge'", async () => {
       });
     });
 
-    describe("Function 'cancelRelocation()'", async () => {
-      async function beforeExecutionOfCancelRelocation(): Promise<{ relocation: TestTokenRelocation }> {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        return prepareSingleRelocationExecution();
-      }
-
-      it("Transfers the tokens as expected, emits the correct event, changes the state properly", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await checkBridgeState([relocation]);
-
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.changeTokenBalances(
-          tokenMock1,
-          [multiTokenBridge, relocation.account],
-          [-relocation.amount, +relocation.amount]
-        ).and.to.emit(
-          multiTokenBridge,
-          EVENT_NAME_CHANGE_RELOCATION_STATUS
-        ).withArgs(
-          relocation.chainId,
-          relocation.token.address,
-          relocation.account.address,
-          relocation.amount,
-          relocation.nonce,
-          RelocationStatus.Canceled,
-          RelocationStatus.Pending
-        );
-        relocation.status = RelocationStatus.Canceled;
-        await checkBridgeState([relocation]);
-      });
-
-      it("Is reverted if the contract is paused", async () => {
-        await beforeEachTest(OperationMode.BurnOrMint);
-        await pauseMultiTokenBridge();
-
-        await expect(
-          multiTokenBridge.connect(user1).cancelRelocation(CHAIN_ID, 0)
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
-      });
-
-      it("Is reverted if the caller did not request the relocation", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await expect(
-          multiTokenBridge.connect(user2).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce has already processed", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Processed
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce does not exists", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce + 1)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is aborted", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).abortRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Aborted
-        );
-      });
-
-      it("Is reverted if a relocation with the nonce is revoked", async () => {
-        const { relocation } = await beforeExecutionOfCancelRelocation();
-        await proveTx(multiTokenBridge.connect(bridger).relocate(relocation.chainId, 1));
-        await proveTx(multiTokenBridge.connect(bridger).revokeRelocation(relocation.chainId, relocation.nonce));
-
-        await expect(
-          multiTokenBridge.connect(relocation.account).cancelRelocation(relocation.chainId, relocation.nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
-        ).withArgs(
-          RelocationStatus.Revoked
-        );
-      });
-    });
-
     describe("Function 'cancelRelocations()'", async () => {
       async function beforeExecutionOfCancelRelocations(): Promise<{
         relocations: TestTokenRelocation[],
@@ -1057,14 +978,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: user1,
-            amount: 34,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user2,
-            amount: 56,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
         ];
@@ -1265,7 +1186,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         await checkBridgeState([relocation]);
       }
 
-      it("Burns no tokens, emits no events if the relocation was canceled by a user", async () => {
+      it("Burns no tokens, emits no events if the relocation was canceled", async () => {
         const { relocation } = await beforeExecutionOfRelocate();
         await cancelRelocations([relocation]);
         await checkExecutionIfRelocationCanceled(relocation);
@@ -1525,28 +1446,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: user1,
-            amount: 234,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user1,
-            amount: 345,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock2,
             account: user2,
-            amount: 456,
+            amount: MINIMUM_RELOCATION_AMOUNT + 2,
             nonce: 3,
           },
           {
             chainId: CHAIN_ID,
             token: tokenMock1,
             account: deployer,
-            amount: 567,
+            amount: MINIMUM_RELOCATION_AMOUNT + 3,
             nonce: 4,
           },
         ];
@@ -1568,18 +1489,10 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
         // Try to cancel already processed relocation
         await expect(
-          multiTokenBridge.connect(relocations[0].account).cancelRelocation(CHAIN_ID, relocations[0].nonce)
+          multiTokenBridge.connect(bridger).cancelRelocations(CHAIN_ID, [relocations[0].nonce])
         ).to.be.revertedWithCustomError(
           multiTokenBridge, REVERT_ERROR_IF_RELOCATION_HAS_INAPPROPRIATE_STATUS
         ).withArgs(RelocationStatus.Processed);
-
-        // Try to cancel a relocation of another user
-        await expect(
-          multiTokenBridge.connect(relocations[1].account).cancelRelocation(CHAIN_ID, relocations[2].nonce)
-        ).to.be.revertedWithCustomError(
-          multiTokenBridge,
-          REVERT_ERROR_IF_TX_SENDER_IS_UNAUTHORIZED_TO_CANCEL_RELOCATION
-        );
 
         // Try to cancel several relocations including the processed one
         await expect(
@@ -1653,28 +1566,28 @@ describe("Contract 'MultiTokenBridge'", async () => {
             chainId: chainId1,
             token: tokenMock2,
             account: user1,
-            amount: 345,
+            amount: MINIMUM_RELOCATION_AMOUNT,
             nonce: 1,
           },
           {
             chainId: chainId1,
             token: tokenMock1,
             account: user1,
-            amount: 456,
+            amount: MINIMUM_RELOCATION_AMOUNT + 1,
             nonce: 2,
           },
           {
             chainId: chainId2,
             token: tokenMock1,
             account: user2,
-            amount: 567,
+            amount: MINIMUM_RELOCATION_AMOUNT + 2,
             nonce: 1,
           },
           {
             chainId: chainId2,
             token: tokenMock2,
             account: deployer,
-            amount: 678,
+            amount: MINIMUM_RELOCATION_AMOUNT + 3,
             nonce: 2,
           },
         ];
@@ -1693,7 +1606,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         await requestRelocations(relocations);
         await checkBridgeState(relocations);
 
-        // Cancel some relocations by users
+        // Cancel some relocations
         await cancelRelocations([relocations[1], relocations[2]]);
         await checkBridgeState(relocations);
 

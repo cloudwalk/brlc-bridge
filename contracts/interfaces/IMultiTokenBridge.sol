@@ -159,18 +159,6 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     ) external returns (uint256 nonce);
 
     /**
-     * @dev Cancels a pending relocation with transferring tokens back from the bridge to the initiator account.
-     *
-     * This function is expected to be called by the same account that requested the relocation.
-     *
-     * Emits a {ChangeRelocationStatus} event.
-     *
-     * @param chainId The destination chain ID of the relocation to cancel.
-     * @param nonce The nonce of the pending relocation to cancel.
-     */
-    function cancelRelocation(uint256 chainId, uint256 nonce) external;
-
-    /**
      * @dev Cancels multiple pending relocations with transferring tokens back from the bridge to initiator accounts.
      *
      * This function can be called by a limited number of accounts that are allowed to execute bridging operations.
