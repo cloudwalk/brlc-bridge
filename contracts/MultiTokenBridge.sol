@@ -201,7 +201,7 @@ contract MultiTokenBridge is
         if (amount == 0) {
             revert ZeroRelocationAmount();
         }
-        if (MINIMUM_RELOCATION_AMOUNT * IERC20MetadataUpgradeable(token).decimals() > amount) {
+        if (MINIMUM_RELOCATION_AMOUNT * 10 ** IERC20MetadataUpgradeable(token).decimals() > amount) {
             revert InsufficientRelocationAmount();
         }
 
