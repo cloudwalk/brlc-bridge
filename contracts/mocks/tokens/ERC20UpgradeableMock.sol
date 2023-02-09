@@ -93,4 +93,13 @@ contract ERC20UpgradeableMock is ERC20Upgradeable, IERC20Bridgeable {
     function disableBurningForBridging() external {
         _isBurningForBridgingDisabled = true;
     }
+
+    /**
+     * @dev See {ERC20Upgradeable-decimals}
+     *
+     * The function is overridden to simplify tests.
+     */
+    function decimals() public pure override returns (uint8) {
+        return 1;
+    }
 }
