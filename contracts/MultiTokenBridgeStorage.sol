@@ -30,6 +30,15 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
 }
 
 /**
+ * @title MultiTokenBridge storage version 2
+ * @author CloudWalk Inc.
+ */
+abstract contract MultiTokenBridgeStorageV2 is MultiTokenBridgeStorageV1 {
+    /// @dev The address of the bridge guard.
+    address internal _bridgeGuard;
+}
+
+/**
  * @title MultiTokenBridge storage
  * @author CloudWalk Inc.
  * @dev Contains storage variables of the multi token bridge contract.
@@ -40,6 +49,6 @@ abstract contract MultiTokenBridgeStorageV1 is IMultiTokenBridgeTypes {
  * e.g. MultiTokenBridgeStorage<versionNumber>, so finally it would look like
  * "contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV1, MultiTokenBridgeStorageV2".
  */
-abstract contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV1 {
+abstract contract MultiTokenBridgeStorage is MultiTokenBridgeStorageV2 {
 
 }

@@ -232,4 +232,9 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
         uint256 nonce,
         Relocation[] memory relocations
     ) external;
+
+    /**
+     * @dev Returns the address of the bridge guard.
+     */
+    function getBridgeGuard() external view returns(address);
 }
