@@ -236,5 +236,5 @@ interface IMultiTokenBridge is IMultiTokenBridgeTypes {
     /**
      * @dev Returns the address of the bridge guard.
      */
-    function getBridgeGuard() external view returns(address);
+    function bridgeGuard() external view returns(address);
 }

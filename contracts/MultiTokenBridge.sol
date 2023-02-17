@@ -600,9 +600,9 @@ contract MultiTokenBridge is
     }
 
     /**
-     * @dev See {IMultiTokenBridge-getBridgeGuard}.
+     * @dev See {IMultiTokenBridge-bridgeGuard}.
      */
-    function getBridgeGuard() external view returns (address) {
+    function bridgeGuard() external view returns (address) {
         return _bridgeGuard;
     }
 

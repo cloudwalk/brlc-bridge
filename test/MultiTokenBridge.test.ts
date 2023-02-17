@@ -628,7 +628,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       // Other constants and settings
       expect(await multiTokenBridge.MINIMUM_RELOCATION_AMOUNT()).to.equal(MINIMUM_RELOCATION_AMOUNT_CONST);
-      expect(await multiTokenBridge.getBridgeGuard()).to.equal(ethers.constants.AddressZero);
+      expect(await multiTokenBridge.bridgeGuard()).to.equal(ethers.constants.AddressZero);
     });
 
     it("Is reverted if it is called a second time", async () => {
@@ -876,7 +876,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).withArgs(
           bridgeGuardMock.address
         );
-        expect(await multiTokenBridge.getBridgeGuard()).to.equal(bridgeGuardMock.address);
+        expect(await multiTokenBridge.bridgeGuard()).to.equal(bridgeGuardMock.address);
 
         await expect(
           multiTokenBridge.setBridgeGuard(ethers.constants.AddressZero)
@@ -886,7 +886,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).withArgs(
           ethers.constants.AddressZero
         );
-        expect(await multiTokenBridge.getBridgeGuard()).to.equal(ethers.constants.AddressZero);
+        expect(await multiTokenBridge.bridgeGuard()).to.equal(ethers.constants.AddressZero);
       });
 
       it("Is reverted if it is called not by the account with the owner role", async () => {
