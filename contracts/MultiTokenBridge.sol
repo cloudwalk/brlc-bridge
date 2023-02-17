@@ -127,17 +127,20 @@ contract MultiTokenBridge is
     /// @dev The mode of accommodation is immutable and it has been already set.
     error AccommodationModeIsImmutable();
 
-    /// @dev The mode of relocation has not changed.
+    /// @dev The mode of relocation has not been changed.
     error UnchangedRelocationMode();
 
-    /// @dev The mode of accommodation has not changed.
+    /// @dev The mode of accommodation has not been changed.
     error UnchangedAccommodationMode();
 
-    /// @dev The address of the bridge guard has not changed.
+    /// @dev The address of the bridge guard has not been changed.
     error UnchangedBridgeGuard();
 
-    /// @dev The bridge guard rejected the accommodation.
-    error GuardValidateAccommodationFailure();
+    /**
+     * @dev The bridge guard rejected the accommodation.
+     * @param validationError The error code returned by the guard.
+     */
+    error GuardValidateAccommodationFailure(uint256 validationError);
 
     // -------------------- Functions -----------------------------------
 
@@ -391,7 +394,7 @@ contract MultiTokenBridge is
         }
 
         IBridgeGuard guard = IBridgeGuard(_bridgeGuard);
-        bool guardEnabled = _bridgeGuard != address(0);
+        bool guardEnabled = address(guard) != address(0);
 
         uint256 len = relocations.length;
         for (uint256 i = 0; i < len; i++) {
@@ -407,8 +410,16 @@ contract MultiTokenBridge is
             }
 
             if (relocation.status == RelocationStatus.Processed) {
-                if (guardEnabled && guard.validateAccommodation(chainId, relocation.token, relocation.account, relocation.amount) != 0) {
-                    revert GuardValidateAccommodationFailure();
+                if (guardEnabled) {
+                    uint256 validationError = guard.validateAccommodation(
+                        chainId,
+                        relocation.token,
+                        relocation.account,
+                        relocation.amount
+                    );
+                    if (validationError != 0) {
+                        revert GuardValidateAccommodationFailure(validationError);
+                    }
                 }
                 OperationMode mode = _accommodationModes[chainId][relocation.token];
                 _issueTokens(relocation, mode);
@@ -591,7 +602,7 @@ contract MultiTokenBridge is
     /**
      * @dev See {IMultiTokenBridge-getBridgeGuard}.
      */
-    function getBridgeGuard() external view returns(address) {
+    function getBridgeGuard() external view returns (address) {
         return _bridgeGuard;
     }
 
