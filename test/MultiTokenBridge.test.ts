@@ -139,6 +139,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const TOKEN_MOCK_DECIMALS = 1;
   const MINIMUM_RELOCATION_AMOUNT = Math.floor(MINIMUM_RELOCATION_AMOUNT_CONST * 10 ** TOKEN_MOCK_DECIMALS);
   const FAKE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000001";
+  const BRIDGE_GUARD_VALIDATION_ERROR_STUB = 112233;
   const CHAIN_ID = 123;
 
   const EVENT_NAME_ACCOMMODATE = "Accommodate";
@@ -147,6 +148,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const EVENT_NAME_REQUEST_RELOCATION = "RequestRelocation";
   const EVENT_NAME_SET_ACCOMMODATION_MODE = "SetAccommodationMode";
   const EVENT_NAME_SET_RELOCATION_MODE = "SetRelocationMode";
+  const EVENT_NAME_SET_BRIDGE_GUARD = "SetBridgeGuard";
 
   const REVERT_MESSAGE_IF_CONTRACT_IS_ALREADY_INITIALIZED = "Initializable: contract is already initialized";
   const REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED = "Pausable: paused";
@@ -167,12 +169,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
   const REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED = "UnsupportedAccommodation";
   const REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS = "ZeroAccommodationAccount";
   const REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO = "ZeroAccommodationAmount";
+  const REVERT_ERROR_IF_ACCOMMODATION_VALIDATION_BY_BRIDGE_GUARD_FAILS = "GuardValidateAccommodationFailure";
 
   const REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED = "TokenMintingFailure";
   const REVERT_ERROR_IF_BURNING_OF_TOKENS_FAILED = "TokenBurningFailure";
 
   const REVERT_ERROR_IF_ACCOMMODATION_MODE_IS_IMMUTABLE = "AccommodationModeIsImmutable";
   const REVERT_ERROR_IF_ACCOMMODATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedAccommodationMode";
+  const REVERT_ERROR_IF_BRIDGE_GUARD_HAS_NOT_BEEN_CHANGED = "UnchangedBridgeGuard";
   const REVERT_ERROR_IF_RELOCATION_MODE_IS_IMMUTABLE = "RelocationModeIsImmutable";
   const REVERT_ERROR_IF_RELOCATION_MODE_HAS_NOT_BEEN_CHANGED = "UnchangedRelocationMode";
   const REVERT_ERROR_IF_TOKEN_IS_NOT_BRIDGEABLE = "NonBridgeableToken";
@@ -184,10 +188,12 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
   let multiTokenBridgeFactory: ContractFactory;
   let tokenMockFactory: ContractFactory;
+  let bridgeGuardFactory: ContractFactory;
 
   let multiTokenBridge: Contract;
   let tokenMock1: Contract;
   let tokenMock2: Contract;
+  let bridgeGuardMock: Contract;
 
   let deployer: SignerWithAddress;
   let bridger: SignerWithAddress;
@@ -199,13 +205,14 @@ describe("Contract 'MultiTokenBridge'", async () => {
   before(async () => {
     multiTokenBridgeFactory = await ethers.getContractFactory("MultiTokenBridge");
     tokenMockFactory = await ethers.getContractFactory("ERC20UpgradeableMock");
+    bridgeGuardFactory = await ethers.getContractFactory("BridgeGuardMock");
 
     [deployer, bridger, user1, user2] = await ethers.getSigners();
   });
 
   async function beforeEachTest(targetOperationMode?: OperationMode) {
     operationMode = targetOperationMode || OperationMode.Unsupported;
-    ({ multiTokenBridge, tokenMock1, tokenMock2 } = await setUpFixture(deployAndConfigureContracts));
+    ({ multiTokenBridge, tokenMock1, tokenMock2, bridgeGuardMock } = await setUpFixture(deployAndConfigureContracts));
   }
 
   async function deployMultiTokenBridge(): Promise<{ multiTokenBridge: Contract }> {
@@ -224,17 +231,26 @@ describe("Contract 'MultiTokenBridge'", async () => {
     return { tokenMock };
   }
 
+  async function deployBridgeGuardMock(): Promise<{ bridgeGuardMock: Contract }> {
+    const bridgeGuardMock: Contract = await bridgeGuardFactory.deploy();
+    await bridgeGuardMock.deployed();
+    return { bridgeGuardMock };
+  }
+
   async function deployAndConfigureContracts(): Promise<{
     multiTokenBridge: Contract,
     tokenMock1: Contract,
-    tokenMock2: Contract
+    tokenMock2: Contract,
+    bridgeGuardMock: Contract
   }> {
     const { multiTokenBridge } = await deployMultiTokenBridge();
     const { tokenMock: tokenMock1 } = await deployTokenMock(1);
     const { tokenMock: tokenMock2 } = await deployTokenMock(2);
+    const { bridgeGuardMock } = await deployBridgeGuardMock();
 
     await proveTx(multiTokenBridge.grantRole(BRIDGER_ROLE, bridger.address));
-    return { multiTokenBridge, tokenMock1, tokenMock2 };
+
+    return { multiTokenBridge, tokenMock1, tokenMock2, bridgeGuardMock };
   }
 
   async function setUpContractsForRelocations(relocations: TestTokenRelocation[]) {
@@ -586,7 +602,7 @@ describe("Contract 'MultiTokenBridge'", async () => {
   }
 
   describe("Function 'initialize()'", async () => {
-    it("The external initializer configures the contract as expected", async () => {
+    it("Configures the contract as expected", async () => {
       await beforeEachTest();
 
       //The roles
@@ -612,9 +628,10 @@ describe("Contract 'MultiTokenBridge'", async () => {
 
       // Other constants and settings
       expect(await multiTokenBridge.MINIMUM_RELOCATION_AMOUNT()).to.equal(MINIMUM_RELOCATION_AMOUNT_CONST);
+      expect(await multiTokenBridge.getBridgeGuard()).to.equal(ethers.constants.AddressZero);
     });
 
-    it("The external initializer is reverted if it is called a second time", async () => {
+    it("Is reverted if it is called a second time", async () => {
       await beforeEachTest();
       await expect(
         multiTokenBridge.initialize()
@@ -843,6 +860,60 @@ describe("Contract 'MultiTokenBridge'", async () => {
         ).to.be.revertedWithCustomError(
           multiTokenBridge,
           REVERT_ERROR_IF_ACCOMMODATION_MODE_IS_IMMUTABLE
+        );
+      });
+    });
+
+    describe("Function 'setBridgeGuard()'", async () => {
+      it("Executes as expected and emits the correct events in different cases", async () => {
+        await beforeEachTest();
+
+        await expect(
+          multiTokenBridge.setBridgeGuard(bridgeGuardMock.address)
+        ).to.emit(
+          multiTokenBridge,
+          EVENT_NAME_SET_BRIDGE_GUARD
+        ).withArgs(
+          bridgeGuardMock.address
+        );
+        expect(await multiTokenBridge.getBridgeGuard()).to.equal(bridgeGuardMock.address);
+
+        await expect(
+          multiTokenBridge.setBridgeGuard(ethers.constants.AddressZero)
+        ).to.emit(
+          multiTokenBridge,
+          EVENT_NAME_SET_BRIDGE_GUARD
+        ).withArgs(
+          ethers.constants.AddressZero
+        );
+        expect(await multiTokenBridge.getBridgeGuard()).to.equal(ethers.constants.AddressZero);
+      });
+
+      it("Is reverted if it is called not by the account with the owner role", async () => {
+        await beforeEachTest();
+        await expect(
+          multiTokenBridge.connect(user1).setBridgeGuard(bridgeGuardMock.address)
+        ).to.be.revertedWith(createRevertMessageDueToMissingRole(user1.address, OWNER_ROLE));
+      });
+
+
+      it("Is reverted if the call does not changed the bridge guard", async () => {
+        await beforeEachTest();
+
+        await expect(
+          multiTokenBridge.setBridgeGuard(ethers.constants.AddressZero)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_BRIDGE_GUARD_HAS_NOT_BEEN_CHANGED
+        );
+
+        await proveTx(multiTokenBridge.setBridgeGuard(bridgeGuardMock.address));
+
+        await expect(
+          multiTokenBridge.setBridgeGuard(bridgeGuardMock.address)
+        ).to.be.revertedWithCustomError(
+          multiTokenBridge,
+          REVERT_ERROR_IF_BRIDGE_GUARD_HAS_NOT_BEEN_CHANGED
         );
       });
     });
@@ -1733,9 +1804,12 @@ describe("Contract 'MultiTokenBridge'", async () => {
         return prepareAccommodations();
       }
 
-      it("Mints tokens as expected, emits the correct events, changes the state properly", async () => {
-        const { relocations, onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-
+      async function checkAccommodation(props: {
+        relocations: TestTokenRelocation[],
+        onChainRelocations: OnChainRelocation[],
+        firstRelocationNonce: number
+      }) {
+        const { relocations, onChainRelocations, firstRelocationNonce } = props;
         const tx: TransactionResponse = await multiTokenBridge.connect(bridger).accommodate(
           CHAIN_ID,
           firstRelocationNonce,
@@ -1747,126 +1821,159 @@ describe("Contract 'MultiTokenBridge'", async () => {
         expect(
           await multiTokenBridge.getLastAccommodationNonce(CHAIN_ID)
         ).to.equal(relocations[relocations.length - 1].nonce);
+      }
+
+      describe("Mints tokens as expected, emits the correct events, changes the state properly if", async () => {
+        it("The bridge guard is set and returns zero validation error", async () => {
+          const props = await beforeExecutionOfAccommodate();
+          await proveTx(multiTokenBridge.setBridgeGuard(bridgeGuardMock.address));
+          await checkAccommodation(props);
+        });
+
+        it("The bridge guard address is zero", async () => {
+          const props = await beforeExecutionOfAccommodate();
+          await proveTx(bridgeGuardMock.setValidationError(BRIDGE_GUARD_VALIDATION_ERROR_STUB));
+          await checkAccommodation(props);
+        });
       });
 
-      it("Is reverted if the contract is paused", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await pauseMultiTokenBridge();
+      describe("Is reverted if", async () => {
+        it("The contract is paused", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await pauseMultiTokenBridge();
 
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
-      });
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWith(REVERT_MESSAGE_IF_CONTRACT_IS_PAUSED);
+        });
 
-      it("Is reverted if the caller does not have the bridger role", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await expect(
-          multiTokenBridge.connect(deployer).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
-      });
+        it("The caller does not have the bridger role", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await expect(
+            multiTokenBridge.connect(deployer).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWith(createRevertMessageDueToMissingRole(deployer.address, BRIDGER_ROLE));
+        });
 
-      it("Is reverted if the chain is unsupported for accommodations", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID + 1,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
-      });
+        it("The chain is unsupported for accommodations", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID + 1,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
+        });
 
-      it("Is reverted if one of the token contracts is unsupported for accommodations", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].token = FAKE_TOKEN_ADDRESS;
+        it("The token contracts is unsupported for accommodations", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          onChainRelocations[1].token = FAKE_TOKEN_ADDRESS;
 
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
-      });
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_IS_UNSUPPORTED);
+        });
 
-      it("Is reverted if the first relocation nonce is zero", async () => {
-        const { onChainRelocations } = await beforeExecutionOfAccommodate();
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            0,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO);
-      });
+        it("The first relocation nonce is zero", async () => {
+          const { onChainRelocations } = await beforeExecutionOfAccommodate();
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              0,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_IS_ZERO);
+        });
 
-      it("Is reverted if the first relocation nonce does not equal the last accommodation nonce +1", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce + 1,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH);
-      });
+        it("The first relocation nonce does not equal the last accommodation nonce +1", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce + 1,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_NONCE_MISMATCH);
+        });
 
-      it("Is reverted if the input array of relocations is empty", async () => {
-        const { firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            []
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ARRAY_OF_RELOCATIONS_IS_EMPTY);
-      });
+        it("The input array of relocations is empty", async () => {
+          const { firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              []
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ARRAY_OF_RELOCATIONS_IS_EMPTY);
+        });
 
-      it("Is reverted if one of the input accounts has zero address", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].account = ethers.constants.AddressZero;
+        it("One of the input accounts has zero address", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          onChainRelocations[1].account = ethers.constants.AddressZero;
 
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS);
-      });
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_ACCOUNT_IS_ZERO_ADDRESS);
+        });
 
-      it("Is reverted if one of the input amounts is zero", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        onChainRelocations[1].amount = ethers.constants.Zero;
+        it("One of the input amounts is zero", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          onChainRelocations[1].amount = ethers.constants.Zero;
 
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO);
-      });
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_ACCOMMODATION_AMOUNT_IS_ZERO);
+        });
 
-      it("Is reverted if minting of tokens had failed", async () => {
-        const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
-        await proveTx(tokenMock1.disableMintingForBridging());
+        it("Minting of tokens had failed", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await proveTx(tokenMock1.disableMintingForBridging());
 
-        await expect(
-          multiTokenBridge.connect(bridger).accommodate(
-            CHAIN_ID,
-            firstRelocationNonce,
-            onChainRelocations
-          )
-        ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED);
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(multiTokenBridge, REVERT_ERROR_IF_MINTING_OF_TOKENS_FAILED);
+        });
+
+        it("The bridge guard returns a non-zero validation error", async () => {
+          const { onChainRelocations, firstRelocationNonce } = await beforeExecutionOfAccommodate();
+          await proveTx(multiTokenBridge.setBridgeGuard(bridgeGuardMock.address));
+          await proveTx(bridgeGuardMock.setValidationError(BRIDGE_GUARD_VALIDATION_ERROR_STUB));
+
+          await expect(
+            multiTokenBridge.connect(bridger).accommodate(
+              CHAIN_ID,
+              firstRelocationNonce,
+              onChainRelocations
+            )
+          ).to.be.revertedWithCustomError(
+            multiTokenBridge,
+            REVERT_ERROR_IF_ACCOMMODATION_VALIDATION_BY_BRIDGE_GUARD_FAILS
+          ).withArgs(BRIDGE_GUARD_VALIDATION_ERROR_STUB);
+        });
       });
     });
   });
