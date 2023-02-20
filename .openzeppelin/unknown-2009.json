@@ -9,6 +9,11 @@
       "address": "0x00cD046Ca9C42a3Cb5E450266012E78b93D2a131",
       "txHash": "0x848961ad226d28e12c794415250eee611dea2ba6205a319177687a3931ea4bfd",
       "kind": "transparent"
+    },
+    {
+      "address": "0x93E1B3E96AC7cf17F60244768200581b4344b80F",
+      "txHash": "0x70ef414081c3360bad71a101c7242198328ab85dc6f89cc2fd61f525caa31be6",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -1071,6 +1076,433 @@
               {
                 "label": "status",
                 "type": "t_enum(RelocationStatus)3934",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(RoleData)245_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "members",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "3711b38f96d53ef973f2d9a17c6aa1735fdd60c4d8a7bb649c24bd74d7b0f29f": {
+      "address": "0xAf8DcD97b7bc112ADE2E71327754d09BC76D6d6d",
+      "txHash": "0x24c1dbd45aaf5774b74129da9d2ca8230fb5618d4fffea90383d59e242e5684a",
+      "layout": {
+        "solcVersion": "0.8.16",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)200_storage",
+            "contract": "StoragePlaceholder200",
+            "src": "@cloudwalkinc\\brlc-contracts\\contracts\\storage\\StoragePlaceholder200.sol:39"
+          },
+          {
+            "label": "_bridge",
+            "offset": 0,
+            "slot": "301",
+            "type": "t_address",
+            "contract": "BridgeGuardStorage",
+            "src": "contracts\\BridgeGuardStorage.sol:13"
+          },
+          {
+            "label": "_accommodationGuards",
+            "offset": 0,
+            "slot": "302",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_struct(Guard)4569_storage))",
+            "contract": "BridgeGuardStorage",
+            "src": "contracts\\BridgeGuardStorage.sol:16"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)200_storage": {
+            "label": "uint256[200]",
+            "numberOfBytes": "6400"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_struct(Guard)4569_storage)": {
+            "label": "mapping(address => struct IBridgeGuardTypes.Guard)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_address,t_struct(Guard)4569_storage))": {
+            "label": "mapping(uint256 => mapping(address => struct IBridgeGuardTypes.Guard))",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Guard)4569_storage": {
+            "label": "struct IBridgeGuardTypes.Guard",
+            "members": [
+              {
+                "label": "timeFrame",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "volumeLimit",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "lastResetTime",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "currentVolume",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "4f7caf4e0db381195fdd480111c54ffd6d930e633d8443144d2b79104ff757e5": {
+      "address": "0x0Cc3ac34df5758e000B9E29f080b3De304Fe2913",
+      "txHash": "0x9d92a1d1e1ea98c95eb1749c537a83fa06094e90e061f517290f7b0d1a62fc09",
+      "layout": {
+        "solcVersion": "0.8.16",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC165Upgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\introspection\\ERC165Upgradeable.sol:41"
+          },
+          {
+            "label": "_roles",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)245_storage)",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlUpgradeable.sol:61"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlUpgradeable.sol:259"
+          },
+          {
+            "label": "_paused",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_bool",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:29"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:116"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "PausableExtUpgradeable",
+            "src": "@cloudwalkinc\\brlc-contracts\\contracts\\access-control\\PausableExtUpgradeable.sol:72"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "RescuableUpgradeable",
+            "src": "@cloudwalkinc\\brlc-contracts\\contracts\\access-control\\RescuableUpgradeable.sol:71"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "301",
+            "type": "t_array(t_uint256)200_storage",
+            "contract": "StoragePlaceholder200",
+            "src": "@cloudwalkinc\\brlc-contracts\\contracts\\storage\\StoragePlaceholder200.sol:39"
+          },
+          {
+            "label": "_pendingRelocationCounters",
+            "offset": 0,
+            "slot": "501",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:14"
+          },
+          {
+            "label": "_lastProcessedRelocationNonces",
+            "offset": 0,
+            "slot": "502",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:17"
+          },
+          {
+            "label": "_relocationModes",
+            "offset": 0,
+            "slot": "503",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_enum(OperationMode)4633))",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:20"
+          },
+          {
+            "label": "_relocations",
+            "offset": 0,
+            "slot": "504",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_struct(Relocation)4650_storage))",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:23"
+          },
+          {
+            "label": "_accommodationModes",
+            "offset": 0,
+            "slot": "505",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_enum(OperationMode)4633))",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:26"
+          },
+          {
+            "label": "_lastAccommodationNonces",
+            "offset": 0,
+            "slot": "506",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "MultiTokenBridgeStorageV1",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:29"
+          },
+          {
+            "label": "_bridgeGuard",
+            "offset": 0,
+            "slot": "507",
+            "type": "t_address",
+            "contract": "MultiTokenBridgeStorageV2",
+            "src": "contracts\\MultiTokenBridgeStorage.sol:38"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)200_storage": {
+            "label": "uint256[200]",
+            "numberOfBytes": "6400"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_enum(OperationMode)4633": {
+            "label": "enum IMultiTokenBridgeTypes.OperationMode",
+            "members": [
+              "Unsupported",
+              "BurnOrMint",
+              "LockOrTransfer"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_enum(RelocationStatus)4640": {
+            "label": "enum IMultiTokenBridgeTypes.RelocationStatus",
+            "members": [
+              "Nonexistent",
+              "Pending",
+              "Canceled",
+              "Processed",
+              "Revoked",
+              "Aborted"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_enum(OperationMode)4633)": {
+            "label": "mapping(address => enum IMultiTokenBridgeTypes.OperationMode)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)245_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_address,t_enum(OperationMode)4633))": {
+            "label": "mapping(uint256 => mapping(address => enum IMultiTokenBridgeTypes.OperationMode))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_struct(Relocation)4650_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct IMultiTokenBridgeTypes.Relocation))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(Relocation)4650_storage)": {
+            "label": "mapping(uint256 => struct IMultiTokenBridgeTypes.Relocation)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint256)": {
+            "label": "mapping(uint256 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Relocation)4650_storage": {
+            "label": "struct IMultiTokenBridgeTypes.Relocation",
+            "members": [
+              {
+                "label": "token",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "account",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "amount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "status",
+                "type": "t_enum(RelocationStatus)4640",
                 "offset": 0,
                 "slot": "3"
               }
