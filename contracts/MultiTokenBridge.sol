@@ -14,6 +14,7 @@ import { StoragePlaceholder200 } from "@cloudwalkinc/brlc-contracts/contracts/st
 import { MultiTokenBridgeStorage } from "./MultiTokenBridgeStorage.sol";
 import { IMultiTokenBridge } from "./interfaces/IMultiTokenBridge.sol";
 import { IERC20Bridgeable } from "./interfaces/IERC20Bridgeable.sol";
+import { IBridgeGuard } from "./interfaces/IBridgeGuard.sol";
 
 /**
  * @title MultiTokenBridgeUpgradeable contract
@@ -57,6 +58,9 @@ contract MultiTokenBridge is
         OperationMode oldMode,   // The old mode of accommodation.
         OperationMode newMode    // The new mode of accommodation.
     );
+
+    /// @dev Emitted when the bridge guard is configured.
+    event SetBridgeGuard(address newBridgeGuard);
 
     // -------------------- Errors -----------------------------------
 
@@ -128,6 +132,15 @@ contract MultiTokenBridge is
 
     /// @dev The mode of accommodation has not been changed.
     error UnchangedAccommodationMode();
+
+    /// @dev The address of the bridge guard has not been changed.
+    error UnchangedBridgeGuard();
+
+    /**
+     * @dev The bridge guard rejected the accommodation.
+     * @param validationError The error code returned by the guard.
+     */
+    error GuardValidateAccommodationFailure(uint256 validationError);
 
     // -------------------- Functions -----------------------------------
 
@@ -380,6 +393,9 @@ contract MultiTokenBridge is
             revert EmptyAccommodationRelocationsArray();
         }
 
+        IBridgeGuard guard = IBridgeGuard(_bridgeGuard);
+        bool guardEnabled = address(guard) != address(0);
+
         uint256 len = relocations.length;
         for (uint256 i = 0; i < len; i++) {
             Relocation memory relocation = relocations[i];
@@ -394,6 +410,17 @@ contract MultiTokenBridge is
             }
 
             if (relocation.status == RelocationStatus.Processed) {
+                if (guardEnabled) {
+                    uint256 validationError = guard.validateAccommodation(
+                        chainId,
+                        relocation.token,
+                        relocation.account,
+                        relocation.amount
+                    );
+                    if (validationError != 0) {
+                        revert GuardValidateAccommodationFailure(validationError);
+                    }
+                }
                 OperationMode mode = _accommodationModes[chainId][relocation.token];
                 _issueTokens(relocation, mode);
                 emit Accommodate(
@@ -494,6 +521,28 @@ contract MultiTokenBridge is
     }
 
     /**
+     * @dev Sets the address of the bridge guard.
+     *
+     * Requirements:
+     *
+     * - The caller must have the {OWNER_ROLE} role.
+     * - The address of the new bridge guard must be different from the current one.
+     *
+     * Emits a {SetBridgeGuard} event.
+     *
+     * @param newBridgeGuard The address of the new bridge guard.
+     */
+    function setBridgeGuard(address newBridgeGuard) external onlyRole(OWNER_ROLE) {
+        if (_bridgeGuard == newBridgeGuard) {
+            revert UnchangedBridgeGuard();
+        }
+
+        _bridgeGuard = newBridgeGuard;
+
+        emit SetBridgeGuard(newBridgeGuard);
+    }
+
+    /**
      * @dev See {IMultiTokenBridge-getPendingRelocationCounter}.
      */
     function getPendingRelocationCounter(uint256 chainId) external view returns (uint256) {
@@ -548,6 +597,13 @@ contract MultiTokenBridge is
             relocations[i] = _relocations[chainId][nonce];
             nonce += 1;
         }
+    }
+
+    /**
+     * @dev See {IMultiTokenBridge-bridgeGuard}.
+     */
+    function bridgeGuard() external view returns (address) {
+        return _bridgeGuard;
     }
 
     /**
